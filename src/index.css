@@ -246,6 +246,19 @@ body {
 .card-sub { font-size: 11px; color: var(--faint); margin-bottom: 14px; margin-top: 2px; }
 .chart-wrap { position: relative; height: 230px; }
 .chart-tall { height: 280px; }
+.no-data-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.88);
+  color: var(--faint);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px;
+  border-radius: 4px;
+}
 
 /* ── Table ── */
 .tbl-card {

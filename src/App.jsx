@@ -288,7 +288,7 @@ function baseOpts(legend = true) {
   };
 }
 
-function drawCharts(filtered, drefFiltered, refs, instances) {
+function drawCharts(filtered, refs, instances) {
   // Operations by Year
   if (refs.year) {
     const byYear = {};
@@ -330,7 +330,7 @@ function drawCharts(filtered, drefFiltered, refs, instances) {
 
   // Budget by Sector
   if (refs.sector) {
-    const drefOnly = drefFiltered.filter(o => o.sectorBudgets);
+    const drefOnly = filtered.filter(o => o.sectorBudgets);
     const totals = SECTORS.map(s => ({
       label: s.label,
       sum: drefOnly.reduce((acc, op) => acc + (op.sectorBudgets[s.key] || 0), 0),
@@ -390,7 +390,7 @@ function drawCharts(filtered, drefFiltered, refs, instances) {
 
   // Health & WASH by Year
   if (refs.hwYear) {
-    const ops = drefFiltered.filter(o => o.sectorBudgets && o.date);
+    const ops = filtered.filter(o => o.sectorBudgets && o.date);
     const byYear = {};
     ops.forEach(op => {
       const y = new Date(op.date).getFullYear();
@@ -427,7 +427,7 @@ function drawCharts(filtered, drefFiltered, refs, instances) {
 
   // Health & WASH by Region
   if (refs.hwRegion) {
-    const ops = drefFiltered.filter(o => o.sectorBudgets);
+    const ops = filtered.filter(o => o.sectorBudgets);
     const byRegion = {};
     ops.forEach(op => {
       const r = op.region || 'Unknown';
@@ -519,28 +519,6 @@ export default function App() {
     return [...yrs].sort((a, b) => b - a);
   }, [drefOps, eaOps]);
 
-  const drefFiltered = useMemo(() => {
-    return drefOps.filter(op => {
-      if (op.date) {
-        const y = new Date(op.date).getFullYear();
-        if (filterYearFrom != null && y < filterYearFrom) return false;
-        if (filterYearTo   != null && y > filterYearTo)   return false;
-      }
-      if (filterStatus !== 'all') {
-        const isActive = ['active', 'ongoing'].includes((op.status || '').toLowerCase());
-        if (filterStatus === 'active' && !isActive) return false;
-        if (filterStatus === 'closed' &&  isActive) return false;
-      }
-      if (filterRegion !== 'all' && op.region !== filterRegion) return false;
-      if (filterDisaster && !(op.disaster || '').toLowerCase().includes(filterDisaster.toLowerCase())) return false;
-      if (filterName) {
-        const h = `${op.name} ${op.appeal_id} ${op.country}`.toLowerCase();
-        if (!h.includes(filterName.toLowerCase())) return false;
-      }
-      return true;
-    });
-  }, [drefOps, filterYearFrom, filterYearTo, filterStatus, filterRegion, filterDisaster, filterName]);
-
   const filtered = useMemo(() => {
     let pool = [];
     if (filterType !== 'ea') pool.push(...drefOps);
@@ -577,17 +555,18 @@ export default function App() {
     const eaReq    = eas.reduce((s, o) => s + (o.total_budget || 0), 0);
     const eaFunded = eas.reduce((s, o) => s + (o.amount_funded || 0), 0);
     const coverage = eaReq > 0 ? (eaFunded / eaReq) * 100 : null;
-    const drefOnly = drefFiltered.filter(o => o.sectorBudgets);
-    const drefTotal  = drefOnly.reduce((s, o) => s + (o.total_budget || 0), 0);
-    const healthSum  = drefOnly.reduce((s, o) => s + (o.sectorBudgets.sector_health || 0), 0);
-    const washSum    = drefOnly.reduce((s, o) => s + (o.sectorBudgets.sector_water_sanitation_and_hygiene || 0), 0);
-    return { total: filtered.length, drefCount: drefs.length, eaCount: eas.length, totalBudget, totalPeople, countries, coverage, drefTotal, healthSum, washSum };
-  }, [filtered, drefFiltered]);
+    const withSectors = filtered.filter(o => o.sectorBudgets);
+    const sectorTotal = withSectors.reduce((s, o) => s + (o.total_budget || 0), 0);
+    const healthSum   = withSectors.reduce((s, o) => s + (o.sectorBudgets.sector_health || 0), 0);
+    const washSum     = withSectors.reduce((s, o) => s + (o.sectorBudgets.sector_water_sanitation_and_hygiene || 0), 0);
+    const hasSectorData = withSectors.length > 0;
+    return { total: filtered.length, drefCount: drefs.length, eaCount: eas.length, totalBudget, totalPeople, countries, coverage, sectorTotal, healthSum, washSum, hasSectorData };
+  }, [filtered]);
 
   useEffect(() => {
     if (loading) return;
     const instances = chartInstances.current;
-    drawCharts(filtered, drefFiltered, {
+    drawCharts(filtered, {
       year: yearRef.current, region: regionRef.current,
       sector: sectorRef.current, dtype: dtypeRef.current,
       hwYear: hwYearRef.current, hwRegion: hwRegionRef.current,
@@ -596,13 +575,13 @@ export default function App() {
       Object.values(instances).forEach(c => c?.destroy());
       chartInstances.current = {};
     };
-  }, [filtered, drefFiltered, loading]);
+  }, [filtered, loading]);
 
   const yearOptions = years.map(y => ({ value: y, label: String(y) }));
   const pageData    = filtered.slice((page - 1) * PG, page * PG);
   const budget      = scaleBudget(stats.totalBudget);
   const people      = scalePeople(stats.totalPeople);
-  const pct = v => stats.drefTotal > 0 ? `${(v / stats.drefTotal * 100).toFixed(1)}% of total DREF budget` : '—';
+  const pct = v => stats.sectorTotal > 0 ? `${(v / stats.sectorTotal * 100).toFixed(1)}% of sector-tracked budget` : '—';
 
   function reset() {
     setFilterType('all'); setFilterYearFrom(undefined); setFilterYearTo(undefined);
@@ -754,11 +733,14 @@ export default function App() {
         {/* ── Charts row 2 ── */}
         <div className="charts-bot">
           <div className="card">
-            <div className="card-title">
-              Budget by Sector <span className="card-note">(DREF operations only)</span>
+            <div className="card-title">Budget by Sector</div>
+            <div className="card-sub">Total approved budget per sector across filtered operations (CHF)</div>
+            <div className="chart-wrap chart-tall" style={{ position: 'relative' }}>
+              <canvas ref={sectorRef} />
+              {!stats.hasSectorData && (
+                <div className="no-data-overlay">No sector breakdown available for the selected operation type</div>
+              )}
             </div>
-            <div className="card-sub">Total approved budget per sector across filtered DREF operations (CHF)</div>
-            <div className="chart-wrap chart-tall"><canvas ref={sectorRef} /></div>
           </div>
           <div className="card">
             <div className="card-title">Disaster Types</div>
@@ -770,7 +752,6 @@ export default function App() {
         {/* ── Health & WASH ── */}
         <div className="section-hdr">
           <span className="section-hdr-title">Health &amp; WASH Budget Analysis</span>
-          <span className="section-hdr-badge">DREF operations only</span>
         </div>
 
         <div className="hw-stats">
@@ -803,13 +784,23 @@ export default function App() {
         <div className="charts-top" style={{ marginBottom: '16px' }}>
           <div className="card">
             <div className="card-title">Health vs WASH Budget by Year</div>
-            <div className="card-sub">Annual CHF allocation for Health and WASH sectors across filtered DREF operations</div>
-            <div className="chart-wrap"><canvas ref={hwYearRef} /></div>
+            <div className="card-sub">Annual CHF allocation for Health and WASH sectors across filtered operations</div>
+            <div className="chart-wrap" style={{ position: 'relative' }}>
+              <canvas ref={hwYearRef} />
+              {!stats.hasSectorData && (
+                <div className="no-data-overlay">No sector breakdown available for the selected operation type</div>
+              )}
+            </div>
           </div>
           <div className="card">
             <div className="card-title">Health vs WASH Budget by Region</div>
             <div className="card-sub">Total CHF allocated to Health and WASH per IFRC region</div>
-            <div className="chart-wrap"><canvas ref={hwRegionRef} /></div>
+            <div className="chart-wrap" style={{ position: 'relative' }}>
+              <canvas ref={hwRegionRef} />
+              {!stats.hasSectorData && (
+                <div className="no-data-overlay">No sector breakdown available for the selected operation type</div>
+              )}
+            </div>
           </div>
         </div>
 
