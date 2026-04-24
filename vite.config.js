@@ -1,56 +1,69 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { join, dirname } from 'path';
 
-export default defineConfig(({ mode }) => {
-  // Load .env from this directory first, then fall back to the parent (Webapps root)
-  const envLocal  = loadEnv(mode, process.cwd(), '');
-  const envParent = loadEnv(mode, path.resolve(process.cwd(), '..'), '');
-  const env = { ...envParent, ...envLocal };
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-  const TOKEN = env.IFRC_TOKEN || process.env.IFRC_TOKEN;
+function getToken() {
+  for (const dir of [__dirname, join(__dirname, '..')]) {
+    try {
+      const text = readFileSync(join(dir, '.env'), 'utf8');
+      const m = text.match(/^IFRC_TOKEN=(.+)$/m);
+      if (m) return m[1].trim().replace(/^['"]|['"]$/g, '');
+    } catch {}
+  }
+  return process.env.IFRC_TOKEN ?? '';
+}
 
-  return {
-    plugins: [
-      react(),
-      {
-        name: 'api-dev',
-        configureServer(server) {
-          server.middlewares.use('/api/dref3', async (_req, res) => {
-            try {
-              const r = await fetch('https://goadmin.ifrc.org/api/v2/dref3/', {
-                headers: { Authorization: `Token ${TOKEN}` },
-              });
-              const data = await r.json();
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify(data));
-            } catch (e) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: e.message }));
-            }
-          });
+const TOKEN = getToken();
 
-          server.middlewares.use('/api/appeals', async (_req, res) => {
-            try {
-              let all = [];
-              let url = 'https://goadmin.ifrc.org/api/v2/appeal/?limit=500&atype=1&ordering=-start_date';
-              while (url) {
-                const r = await fetch(url, {
-                  headers: { Authorization: `Token ${TOKEN}` },
-                });
-                const data = await r.json();
-                all.push(...(data.results || []));
-                url = data.next || null;
-              }
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify(all));
-            } catch (e) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: e.message }));
-            }
-          });
-        },
+function apiFetch(url) {
+  return fetch(url, { headers: { Authorization: `Token ${TOKEN}` } }).then(r => {
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return r.json();
+  });
+}
+
+function sendJSON(res, data) {
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
+}
+
+function sendError(res, err) {
+  console.error('[api]', err.message);
+  res.statusCode = 500;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ error: err.message }));
+}
+
+export default defineConfig({
+  plugins: [
+    react(),
+    {
+      name: 'api-dev',
+      configureServer(server) {
+        server.middlewares.use('/api/dref3', (_req, res) => {
+          apiFetch('https://goadmin.ifrc.org/api/v2/dref3/')
+            .then(data => sendJSON(res, data))
+            .catch(err => sendError(res, err));
+        });
+
+        server.middlewares.use('/api/appeals', (_req, res) => {
+          const pages = [];
+          function next(url) {
+            if (!url) return Promise.resolve(pages.flat());
+            return apiFetch(url).then(data => {
+              pages.push(data.results ?? []);
+              return next(data.next ?? null);
+            });
+          }
+          next('https://goadmin.ifrc.org/api/v2/appeal/?limit=500&atype=1&ordering=-start_date')
+            .then(all => sendJSON(res, all))
+            .catch(err => sendError(res, err));
+        });
       },
-    ],
-  };
+    },
+  ],
 });
