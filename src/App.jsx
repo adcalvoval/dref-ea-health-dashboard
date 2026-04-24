@@ -662,7 +662,7 @@ export default function App() {
       )}
 
       <header className="header">
-        <span className="header-logo">IFRC GO</span>
+        <span className="header-logo">IFRC</span>
         <span className="header-sep" />
         <span className="header-title">DREF &amp; Emergency Appeal Dashboard</span>
       </header>
