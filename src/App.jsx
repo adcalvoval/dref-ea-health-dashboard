@@ -1,17 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import {
-  KeyFigure,
-  Table,
-  Pager,
-  SelectInput,
-  TextInput,
-  Button,
-  BlockLoading,
-} from '@ifrc-go/ui';
-import {
-  createStringColumn,
-  createElementColumn,
-} from '@ifrc-go/ui/utils';
 import Chart from 'chart.js/auto';
 
 /* ── Constants ────────────────────────────────────────────────────── */
@@ -54,13 +41,13 @@ const REGION_OPTIONS = [
   { value: 'Middle East & North Africa', label: 'Middle East & North Africa' },
 ];
 const QUICK_FILTERS = [
-  { term: 'Epidemic',           label: 'Epidemic / Outbreak',   cls: 'tag-ep' },
-  { term: 'Flood',              label: 'Flood',                  cls: 'tag-fl' },
-  { term: 'Cyclone',            label: 'Cyclone',                cls: 'tag-cy' },
-  { term: 'Drought',            label: 'Drought',                cls: 'tag-dr' },
-  { term: 'Earthquake',         label: 'Earthquake',             cls: 'tag-eq' },
-  { term: 'Population Movement',label: 'Population Movement',    cls: 'tag-pm' },
-  { term: 'Food Insecurity',    label: 'Food Insecurity',        cls: 'tag-fi' },
+  { term: 'Epidemic',            label: 'Epidemic / Outbreak',  cls: 'tag-ep' },
+  { term: 'Flood',               label: 'Flood',                cls: 'tag-fl' },
+  { term: 'Cyclone',             label: 'Cyclone',              cls: 'tag-cy' },
+  { term: 'Drought',             label: 'Drought',              cls: 'tag-dr' },
+  { term: 'Earthquake',          label: 'Earthquake',           cls: 'tag-eq' },
+  { term: 'Population Movement', label: 'Population Movement',  cls: 'tag-pm' },
+  { term: 'Food Insecurity',     label: 'Food Insecurity',      cls: 'tag-fi' },
 ];
 
 const PG = 25;
@@ -150,6 +137,98 @@ function processEA(raw) {
   }));
 }
 
+/* ── Inline UI components ─────────────────────────────────────────── */
+
+function KeyFigure({ value, label, suffix, description }) {
+  const display = value != null ? `${value}${suffix ? ' ' + suffix : ''}` : '—';
+  return (
+    <div>
+      <div className="kf-value">{display}</div>
+      <div className="kf-label">{label}</div>
+      {description && <div className="kf-desc">{description}</div>}
+    </div>
+  );
+}
+
+function FilterSelect({ label, name, value, options, onChange }) {
+  return (
+    <div className="filter-field">
+      <label className="filter-label" htmlFor={name}>{label}</label>
+      <select
+        id={name}
+        className="filter-select"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      >
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function FilterSelectYear({ label, name, value, options, onChange }) {
+  return (
+    <div className="filter-field">
+      <label className="filter-label" htmlFor={name}>{label}</label>
+      <select
+        id={name}
+        className="filter-select"
+        value={value ?? ''}
+        onChange={e => onChange(e.target.value ? Number(e.target.value) : undefined)}
+      >
+        <option value="">Any</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function FilterInput({ label, name, value, onChange, placeholder }) {
+  return (
+    <div className="filter-field">
+      <label className="filter-label" htmlFor={name}>{label}</label>
+      <input
+        id={name}
+        className="filter-input"
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function Pager({ activePage, itemsCount, maxItemsPerPage, onActivePageChange }) {
+  const totalPages = Math.ceil(itemsCount / maxItemsPerPage);
+  if (totalPages <= 1) return null;
+  const pages = [];
+  const start = Math.max(1, activePage - 2);
+  const end = Math.min(totalPages, activePage + 2);
+  for (let i = start; i <= end; i++) pages.push(i);
+  return (
+    <div className="pager">
+      <button className="pg-btn" disabled={activePage === 1} onClick={() => onActivePageChange(activePage - 1)}>‹</button>
+      {start > 1 && (
+        <>
+          <button className="pg-btn" onClick={() => onActivePageChange(1)}>1</button>
+          {start > 2 && <span className="pg-ellipsis">…</span>}
+        </>
+      )}
+      {pages.map(p => (
+        <button key={p} className={`pg-btn${p === activePage ? ' pg-active' : ''}`} onClick={() => onActivePageChange(p)}>{p}</button>
+      ))}
+      {end < totalPages && (
+        <>
+          {end < totalPages - 1 && <span className="pg-ellipsis">…</span>}
+          <button className="pg-btn" onClick={() => onActivePageChange(totalPages)}>{totalPages}</button>
+        </>
+      )}
+      <button className="pg-btn" disabled={activePage === totalPages} onClick={() => onActivePageChange(activePage + 1)}>›</button>
+    </div>
+  );
+}
+
 /* ── Cell renderers ───────────────────────────────────────────────── */
 
 function NameCell({ name, link }) {
@@ -172,9 +251,6 @@ function StatusCell({ status, stage }) {
   if (stage) return <span className="badge b-stage">{stage}</span>;
   return <span className="faint">—</span>;
 }
-function BudgetCell({ budget }) {
-  return <span className="num">{fMoney(budget)}</span>;
-}
 function CoverageCell({ src, total, funded }) {
   if (src !== 'ea' || !total) return <span className="faint">—</span>;
   const pct = Math.min((funded / total) * 100, 100);
@@ -188,25 +264,6 @@ function CoverageCell({ src, total, funded }) {
     </div>
   );
 }
-function PeopleCell({ people }) {
-  return <span className="num">{fNum(people)}</span>;
-}
-
-/* ── Table columns ────────────────────────────────────────────────── */
-
-const COLUMNS = [
-  createStringColumn('appeal_id', 'Code', r => r.appeal_id),
-  createElementColumn('name', 'Name', NameCell, (_k, r) => ({ name: r.name, link: r.link })),
-  createStringColumn('country', 'Country', r => r.country),
-  createStringColumn('region', 'Region', r => r.region),
-  createElementColumn('_src', 'Type', TypeBadge, (_k, r) => ({ src: r._src })),
-  createElementColumn('disaster', 'Disaster', DisasterCell, (_k, r) => ({ disaster: r.disaster })),
-  createElementColumn('status', 'Status', StatusCell, (_k, r) => ({ status: r.status, stage: r.stage })),
-  createStringColumn('date', 'Approved', r => r.date || '—'),
-  createElementColumn('budget', 'Total Budget', BudgetCell, (_k, r) => ({ budget: r.total_budget })),
-  createElementColumn('coverage', 'EA Coverage', CoverageCell, (_k, r) => ({ src: r._src, total: r.total_budget, funded: r.amount_funded })),
-  createElementColumn('people', 'People Targeted', PeopleCell, (_k, r) => ({ people: r.people_targeted })),
-];
 
 /* ── Chart drawing ────────────────────────────────────────────────── */
 
@@ -428,11 +485,11 @@ export default function App() {
   const [filterName, setFilterName] = useState('');
   const [page, setPage] = useState(1);
 
-  const yearRef    = useRef(null);
-  const regionRef  = useRef(null);
-  const sectorRef  = useRef(null);
-  const dtypeRef   = useRef(null);
-  const hwYearRef  = useRef(null);
+  const yearRef     = useRef(null);
+  const regionRef   = useRef(null);
+  const sectorRef   = useRef(null);
+  const dtypeRef    = useRef(null);
+  const hwYearRef   = useRef(null);
   const hwRegionRef = useRef(null);
   const chartInstances = useRef({});
 
@@ -552,7 +609,8 @@ export default function App() {
     <>
       {loading && (
         <div className="loading-overlay">
-          <BlockLoading message="Loading DREF & Emergency Appeal data…" />
+          <div className="spinner" />
+          <span style={{ marginLeft: 12, color: '#6B7280', fontSize: 14 }}>Loading DREF &amp; Emergency Appeal data…</span>
         </div>
       )}
 
@@ -567,72 +625,60 @@ export default function App() {
         {/* ── Filters ── */}
         <div className="filters">
           <div className="filter-row">
-            <SelectInput
+            <FilterSelect
               name="type"
               label="Operation Type"
               options={TYPE_OPTIONS}
-              keySelector={o => o.value}
-              labelSelector={o => o.label}
               value={filterType}
-              onChange={val => { setFilterType(val ?? 'all'); setPage(1); }}
-              nonClearable
+              onChange={val => { setFilterType(val); setPage(1); }}
             />
-            <SelectInput
+            <FilterSelectYear
               name="yearFrom"
               label="Year From"
               options={yearOptions}
-              keySelector={o => o.value}
-              labelSelector={o => o.label}
               value={filterYearFrom}
               onChange={val => { setFilterYearFrom(val); setPage(1); }}
             />
             <span className="year-arrow">→</span>
-            <SelectInput
+            <FilterSelectYear
               name="yearTo"
               label="Year To"
               options={yearOptions}
-              keySelector={o => o.value}
-              labelSelector={o => o.label}
               value={filterYearTo}
               onChange={val => { setFilterYearTo(val); setPage(1); }}
             />
-            <SelectInput
+            <FilterSelect
               name="status"
               label="Status"
               options={STATUS_OPTIONS}
-              keySelector={o => o.value}
-              labelSelector={o => o.label}
               value={filterStatus}
-              onChange={val => { setFilterStatus(val ?? 'all'); setPage(1); }}
-              nonClearable
+              onChange={val => { setFilterStatus(val); setPage(1); }}
             />
-            <SelectInput
+            <FilterSelect
               name="region"
               label="Region"
               options={REGION_OPTIONS}
-              keySelector={o => o.value}
-              labelSelector={o => o.label}
               value={filterRegion}
-              onChange={val => { setFilterRegion(val ?? 'all'); setPage(1); }}
-              nonClearable
+              onChange={val => { setFilterRegion(val); setPage(1); }}
             />
-            <TextInput
+            <FilterInput
               name="disaster"
               label="Disaster Type Search"
               value={filterDisaster}
-              onChange={val => { setFilterDisaster(val ?? ''); setPage(1); }}
+              onChange={val => { setFilterDisaster(val); setPage(1); }}
               placeholder='e.g. "Epidemic", "Flood"…'
             />
-            <TextInput
+            <FilterInput
               name="name"
               label="Operation Name / Code"
               value={filterName}
-              onChange={val => { setFilterName(val ?? ''); setPage(1); }}
+              onChange={val => { setFilterName(val); setPage(1); }}
               placeholder="Search name or code…"
             />
-            <Button name="reset" onClick={reset} variant="secondary">
-              Reset
-            </Button>
+            <div className="filter-field">
+              <label className="filter-label">&nbsp;</label>
+              <button className="btn-reset" onClick={reset}>Reset</button>
+            </div>
           </div>
 
           <div className="tags">
@@ -770,13 +816,47 @@ export default function App() {
             <div className="tbl-count">{filtered.length.toLocaleString()} records</div>
           </div>
           <div className="tbl-wrap">
-            <Table
-              data={pageData}
-              keySelector={(_row, idx) => idx}
-              columns={COLUMNS}
-              filtered={false}
-              pending={false}
-            />
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Country</th>
+                  <th>Region</th>
+                  <th>Type</th>
+                  <th>Disaster</th>
+                  <th>Status</th>
+                  <th>Approved</th>
+                  <th>Total Budget</th>
+                  <th>EA Coverage</th>
+                  <th>People Targeted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageData.map((row, idx) => (
+                  <tr key={idx}>
+                    <td>{row.appeal_id}</td>
+                    <td><NameCell name={row.name} link={row.link} /></td>
+                    <td>{row.country}</td>
+                    <td>{row.region}</td>
+                    <td><TypeBadge src={row._src} /></td>
+                    <td><DisasterCell disaster={row.disaster} /></td>
+                    <td><StatusCell status={row.status} stage={row.stage} /></td>
+                    <td>{row.date || '—'}</td>
+                    <td><span className="num">{fMoney(row.total_budget)}</span></td>
+                    <td><CoverageCell src={row._src} total={row.total_budget} funded={row.amount_funded} /></td>
+                    <td><span className="num">{fNum(row.people_targeted)}</span></td>
+                  </tr>
+                ))}
+                {pageData.length === 0 && (
+                  <tr>
+                    <td colSpan={11} style={{ textAlign: 'center', color: 'var(--faint)', padding: '32px' }}>
+                      No operations match the current filters
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
           <div className="pagination">
             <div className="pg-info">

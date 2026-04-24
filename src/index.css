@@ -114,6 +114,108 @@ body {
 .tag-fi  { background: #F3F4F6; color: #374151; border-color: #D1D5DB; }
 .tag.active-tag { outline: 2px solid currentColor; outline-offset: 1px; }
 
+/* ── Filter controls ── */
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.filter-select,
+.filter-input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s;
+}
+.filter-select:focus,
+.filter-input:focus { border-color: var(--red); }
+.filter-select { cursor: pointer; appearance: auto; }
+.filter-input::placeholder { color: var(--faint); }
+.btn-reset {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-reset:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+/* ── KeyFigure ── */
+.kf-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.kf-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.kf-desc {
+  font-size: 11px;
+  color: var(--faint);
+  margin-top: 3px;
+}
+
+/* ── Spinner ── */
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Pager ── */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pg-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  transition: all .15s;
+}
+.pg-btn:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+.pg-btn:disabled { opacity: .4; cursor: default; }
+.pg-btn.pg-active { background: var(--red); color: #fff; border-color: var(--red); font-weight: 600; }
+.pg-ellipsis { color: var(--faint); font-size: 13px; padding: 0 2px; }
+
 /* ── Stats ── */
 .stats {
   display: grid;
@@ -170,7 +272,6 @@ body {
 }
 .tbl-wrap { overflow-x: auto; }
 
-/* @ifrc-go/ui Table overrides */
 .tbl-wrap table { width: 100%; }
 .tbl-wrap thead th {
   font-size: 10px;
