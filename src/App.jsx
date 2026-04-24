@@ -83,8 +83,9 @@ function scalePeople(v) {
 /* ── Data processing ──────────────────────────────────────────────── */
 
 function processDref(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results ?? []);
   const groups = {};
-  raw.forEach(r => {
+  list.forEach(r => {
     if (!groups[r.appeal_id]) groups[r.appeal_id] = [];
     groups[r.appeal_id].push(r);
   });
@@ -500,6 +501,9 @@ export default function App() {
     ]).then(([dref3, eas]) => {
       setDrefOps(processDref(dref3));
       setEaOps(processEA(eas));
+    }).catch(err => {
+      console.error('Failed to load data:', err);
+    }).finally(() => {
       setLoading(false);
     });
   }, []);
