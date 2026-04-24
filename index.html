@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DREF & EA Dashboard | IFRC GO</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --red: #F5333F;
+  --red-dark: #C0272D;
+  --red-bg: #FEF2F2;
+  --ea-color: #FF6B35;
+  --ea-bg: #FFF3EE;
+  --bg: #F1F3F5;
+  --surface: #FFFFFF;
+  --border: #E4E6EA;
+  --text: #1D2433;
+  --muted: #6B7280;
+  --faint: #9CA3AF;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+  --r: 8px;
+  --r-lg: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+/* ── Loading ── */
+#overlay {
+  position: fixed; inset: 0; background: rgba(255,255,255,0.95);
+  z-index: 999; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 14px;
+}
+.spinner {
+  width: 40px; height: 40px; border: 3px solid var(--border);
+  border-top-color: var(--red); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loadMsg { font-size: 13px; color: var(--muted); }
+#loadProg { font-size: 13px; font-weight: 600; color: var(--red); }
+
+/* ── Header ── */
+.header {
+  background: var(--red); color: #fff; height: 54px;
+  display: flex; align-items: center; padding: 0 24px; gap: 14px;
+  box-shadow: 0 2px 6px rgba(200,0,10,0.25); position: sticky; top: 0; z-index: 100;
+}
+.header-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.header-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.3); }
+.header-title { font-size: 14px; font-weight: 500; opacity: .92; }
+
+/* ── Layout ── */
+.wrap { max-width: 1440px; margin: 0 auto; padding: 20px 20px 40px; }
+
+/* ── Filters ── */
+.filters {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 14px 18px; margin-bottom: 16px; box-shadow: var(--shadow);
+}
+.filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.fg { display: flex; flex-direction: column; gap: 3px; }
+.fg label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+select, .fi {
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;
+  font: 13px 'Inter', sans-serif; color: var(--text); background: #fff;
+  outline: none; transition: border-color .15s, box-shadow .15s; min-width: 120px; cursor: pointer;
+}
+select:focus, .fi:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(245,51,63,0.1); }
+.fi-wide { min-width: 220px; }
+.btn-reset {
+  padding: 6px 14px; border: 1px solid var(--border); background: #fff; border-radius: 6px;
+  font: 13px 'Inter', sans-serif; color: var(--muted); cursor: pointer; transition: all .15s; margin-left: auto;
+}
+.btn-reset:hover { border-color: var(--red); color: var(--red); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.tag-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+  border-radius: 20px; font-size: 11px; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent; transition: all .15s; white-space: nowrap;
+}
+.tag:hover { opacity: .85; }
+.tag-ep  { background: #EDE9FE; color: #5B21B6; border-color: #C4B5FD; }
+.tag-fl  { background: #DBEAFE; color: #1D4ED8; border-color: #93C5FD; }
+.tag-cy  { background: #D1FAE5; color: #065F46; border-color: #6EE7B7; }
+.tag-dr  { background: #FEF3C7; color: #92400E; border-color: #FCD34D; }
+.tag-eq  { background: #FEE2E2; color: #991B1B; border-color: #FCA5A5; }
+.tag-pm  { background: #E0F2FE; color: #075985; border-color: #7DD3FC; }
+.tag-fi  { background: #F3F4F6; color: #374151; border-color: #D1D5DB; }
+.tag.active-tag { outline: 2px solid currentColor; outline-offset: 1px; }
+
+/* ── Stats ── */
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 16px 18px; box-shadow: var(--shadow);
+}
+.stat-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 6px; }
+.stat-val { font-size: 24px; font-weight: 700; line-height: 1; color: var(--text); }
+.stat-val.accent { color: var(--red); }
+.stat-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
+
+/* ── Charts ── */
+.charts-top { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.charts-bot { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 16px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 18px 20px; box-shadow: var(--shadow);
+}
+.card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.card-sub { font-size: 11px; color: var(--faint); margin-bottom: 14px; margin-top: 2px; }
+.chart-wrap { position: relative; height: 230px; }
+.chart-wrap-sm { position: relative; height: 230px; }
+
+/* ── Table ── */
+.tbl-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.tbl-head {
+  padding: 14px 18px; display: flex; align-items: center;
+  justify-content: space-between; border-bottom: 1px solid var(--border);
+}
+.tbl-head-title { font-size: 14px; font-weight: 600; }
+.tbl-count {
+  font-size: 11px; color: var(--muted); background: var(--bg);
+  padding: 3px 10px; border-radius: 20px;
+}
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; padding: 9px 12px; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted);
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+thead th:hover { color: var(--text); }
+thead th.sorted { color: var(--red); }
+thead th .si { opacity: .35; margin-left: 3px; }
+thead th.sorted .si { opacity: 1; color: var(--red); }
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #F8F9FA; }
+tbody td { padding: 9px 12px; font-size: 12px; color: var(--text); }
+.mono { font-family: monospace; font-size: 11px; color: var(--muted); }
+.td-name { max-width: 240px; white-space: normal; line-height: 1.3; font-size: 12px; }
+.td-name a { color: var(--text); text-decoration: none; }
+.td-name a:hover { color: var(--red); text-decoration: underline; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.badge {
+  display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 20px;
+  font-size: 10px; font-weight: 600; white-space: nowrap;
+}
+.b-dref   { background: var(--red-bg); color: #991B1B; }
+.b-ea     { background: var(--ea-bg); color: #9A3412; }
+.b-active { background: #D1FAE5; color: #065F46; }
+.b-closed { background: #F3F4F6; color: #6B7280; }
+.b-orange { background: #FEF3C7; color: #92400E; }
+.b-stage  { background: #EDE9FE; color: #5B21B6; }
+.pill {
+  display: inline-flex; align-items: center; padding: 2px 7px;
+  border-radius: 4px; font-size: 10px; font-weight: 500; white-space: nowrap;
+  background: #F3F4F6; color: var(--muted);
+}
+.pill-ep { background: #EDE9FE; color: #5B21B6; }
+.pill-fl { background: #DBEAFE; color: #1E40AF; }
+.pill-cy { background: #D1FAE5; color: #065F46; }
+.pill-eq { background: #FEE2E2; color: #991B1B; }
+
+/* Budget bar */
+.bbar-wrap { display: flex; align-items: center; gap: 6px; min-width: 90px; }
+.bbar-bg { flex: 1; height: 5px; background: #E5E7EB; border-radius: 3px; overflow: hidden; }
+.bbar-fill { height: 100%; border-radius: 3px; }
+.bbar-fill.green  { background: #10B981; }
+.bbar-fill.yellow { background: #F59E0B; }
+.bbar-fill.red    { background: #EF4444; }
+.bbar-pct { font-size: 10px; font-weight: 600; color: var(--muted); min-width: 28px; }
+
+/* Pagination */
+.pagination { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; border-top: 1px solid var(--border); }
+.pg-info { font-size: 11px; color: var(--muted); }
+.pg-btns { display: flex; gap: 3px; }
+.pg-btn {
+  padding: 4px 9px; border: 1px solid var(--border); background: #fff;
+  border-radius: 5px; font: 12px 'Inter', sans-serif; color: var(--text);
+  cursor: pointer; transition: all .15s;
+}
+.pg-btn:hover { border-color: var(--red); color: var(--red); }
+.pg-btn:disabled { opacity: .35; cursor: not-allowed; }
+.pg-btn.active { background: var(--red); color: #fff; border-color: var(--red); }
+
+/* ── Health & WASH section ── */
+.section-hdr {
+  display: flex; align-items: center; gap: 10px;
+  margin: 20px 0 12px;
+}
+.section-hdr-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.section-hdr-badge {
+  font-size: 10px; font-weight: 500; color: var(--faint);
+  background: var(--bg); padding: 2px 8px; border-radius: 20px; border: 1px solid var(--border);
+}
+.hw-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.hw-stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 14px 18px; box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 14px;
+}
+.hw-icon { font-size: 26px; flex-shrink: 0; }
+.hw-stat-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 4px; }
+.hw-stat-val { font-size: 22px; font-weight: 700; line-height: 1; }
+.hw-stat-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
+.hw-health  { border-left: 3px solid #EF4444; }
+.hw-health  .hw-stat-val { color: #EF4444; }
+.hw-wash    { border-left: 3px solid #06B6D4; }
+.hw-wash    .hw-stat-val { color: #06B6D4; }
+.hw-combo   { border-left: 3px solid #8B5CF6; }
+.hw-combo   .hw-stat-val { color: #8B5CF6; }
+
+/* Empty */
+.empty { padding: 48px 24px; text-align: center; color: var(--faint); font-size: 13px; }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .stats { grid-template-columns: repeat(3, 1fr); }
+  .charts-bot { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 800px) {
+  .stats { grid-template-columns: 1fr 1fr; }
+  .charts-top, .charts-bot { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="overlay">
+  <div class="spinner"></div>
+  <div id="loadMsg">Loading DREF &amp; Emergency Appeal data…</div>
+  <div id="loadProg">Connecting to IFRC GO…</div>
+</div>
+
+<!-- Header -->
+<header class="header">
+  <span class="header-logo">IFRC GO</span>
+  <span class="header-sep"></span>
+  <span class="header-title">DREF &amp; Emergency Appeal Dashboard</span>
+</header>
+
+<div class="wrap">
+
+  <!-- Filters -->
+  <div class="filters">
+    <div class="filter-row">
+      <div class="fg">
+        <label>Operation Type</label>
+        <select id="fType" onchange="applyFilters()">
+          <option value="all">All Types</option>
+          <option value="dref">DREF</option>
+          <option value="ea">Emergency Appeal</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Year From</label>
+        <select id="fYearFrom" onchange="applyFilters()"><option value="all">Any</option></select>
+      </div>
+      <div class="fg" style="align-self:flex-end;padding-bottom:7px;color:var(--muted);font-size:13px">→</div>
+      <div class="fg">
+        <label>Year To</label>
+        <select id="fYearTo" onchange="applyFilters()"><option value="all">Any</option></select>
+      </div>
+      <div class="fg">
+        <label>Status</label>
+        <select id="fStatus" onchange="applyFilters()">
+          <option value="all">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Region</label>
+        <select id="fRegion" onchange="applyFilters()">
+          <option value="all">All Regions</option>
+          <option value="Africa">Africa</option>
+          <option value="Americas">Americas</option>
+          <option value="Asia Pacific">Asia Pacific</option>
+          <option value="Europe">Europe</option>
+          <option value="Middle East & North Africa">Middle East &amp; North Africa</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Disaster Type Search</label>
+        <input id="fDisaster" class="fi fi-wide" type="text" placeholder='e.g. "Epidemic", "Flood", "Cholera"…' oninput="applyFilters()">
+      </div>
+      <div class="fg">
+        <label>Operation Name / Code</label>
+        <input id="fName" class="fi" type="text" placeholder="Search name or code…" oninput="applyFilters()" style="min-width:180px">
+      </div>
+      <button class="btn-reset" onclick="resetFilters()">Reset</button>
+    </div>
+    <div class="tags">
+      <span class="tag-label">Quick filters:</span>
+      <span class="tag tag-ep" onclick="quickFilter('Epidemic')">🦠 Epidemic / Outbreak</span>
+      <span class="tag tag-fl" onclick="quickFilter('Flood')">🌊 Flood</span>
+      <span class="tag tag-cy" onclick="quickFilter('Cyclone')">🌀 Cyclone</span>
+      <span class="tag tag-dr" onclick="quickFilter('Drought')">🏜️ Drought</span>
+      <span class="tag tag-eq" onclick="quickFilter('Earthquake')">⚠️ Earthquake</span>
+      <span class="tag tag-pm" onclick="quickFilter('Population Movement')">🚶 Population Movement</span>
+      <span class="tag tag-fi" onclick="quickFilter('Food Insecurity')">🌾 Food Insecurity</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-lbl">Total Operations</div>
+      <div class="stat-val accent" id="sOps">—</div>
+      <div class="stat-sub" id="sOpsSub">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">Total Budget</div>
+      <div class="stat-val" id="sBudget">—</div>
+      <div class="stat-sub" id="sBudgetSub">CHF</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">People Targeted</div>
+      <div class="stat-val" id="sPeople">—</div>
+      <div class="stat-sub" id="sPeopleSub">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">EA Funding Coverage</div>
+      <div class="stat-val accent" id="sCoverage">—</div>
+      <div class="stat-sub">funded / requested (EA only)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-lbl">Countries Affected</div>
+      <div class="stat-val" id="sCountries">—</div>
+      <div class="stat-sub" id="sCountriesSub">—</div>
+    </div>
+  </div>
+
+  <!-- Charts row 1 -->
+  <div class="charts-top">
+    <div class="card">
+      <div class="card-title">Operations by Year</div>
+      <div class="card-sub">Number of DREF operations and Emergency Appeals approved per year</div>
+      <div class="chart-wrap"><canvas id="cYear"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Operations by Region</div>
+      <div class="card-sub">Distribution across IFRC regions</div>
+      <div class="chart-wrap"><canvas id="cRegion"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Charts row 2 -->
+  <div class="charts-bot">
+    <div class="card">
+      <div class="card-title">Budget by Sector <span style="font-size:10px;font-weight:400;color:var(--faint);margin-left:4px">(DREF operations only)</span></div>
+      <div class="card-sub">Total approved budget per sector across filtered DREF operations (CHF)</div>
+      <div class="chart-wrap" style="height:280px"><canvas id="cSector"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Disaster Types</div>
+      <div class="card-sub">Top categories in filtered results</div>
+      <div class="chart-wrap-sm"><canvas id="cDtype"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Health & WASH section -->
+  <div class="section-hdr">
+    <span class="section-hdr-title">Health &amp; WASH Budget Analysis</span>
+    <span class="section-hdr-badge">DREF operations only</span>
+  </div>
+
+  <div class="hw-stats">
+    <div class="hw-stat hw-health">
+      <div class="hw-icon">🏥</div>
+      <div>
+        <div class="hw-stat-lbl">Health Budget</div>
+        <div class="hw-stat-val" id="sHealth">—</div>
+        <div class="hw-stat-sub" id="sHealthPct">— of total DREF budget</div>
+      </div>
+    </div>
+    <div class="hw-stat hw-wash">
+      <div class="hw-icon">💧</div>
+      <div>
+        <div class="hw-stat-lbl">WASH Budget</div>
+        <div class="hw-stat-val" id="sWash">—</div>
+        <div class="hw-stat-sub" id="sWashPct">— of total DREF budget</div>
+      </div>
+    </div>
+    <div class="hw-stat hw-combo">
+      <div class="hw-icon">➕</div>
+      <div>
+        <div class="hw-stat-lbl">Health + WASH Combined</div>
+        <div class="hw-stat-val" id="sHWCombo">—</div>
+        <div class="hw-stat-sub" id="sHWComboPct">— of total DREF budget</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts-top" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">Health vs WASH Budget by Year</div>
+      <div class="card-sub">Annual CHF allocation for Health and WASH sectors across filtered DREF operations</div>
+      <div class="chart-wrap"><canvas id="cHWYear"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Health vs WASH Budget by Region</div>
+      <div class="card-sub">Total CHF allocated to Health and WASH per IFRC region</div>
+      <div class="chart-wrap"><canvas id="cHWRegion"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="tbl-card">
+    <div class="tbl-head">
+      <div class="tbl-head-title">Operations</div>
+      <div class="tbl-count" id="tblCount">—</div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortBy('appeal_id')">Code <span class="si" id="si_appeal_id">↕</span></th>
+            <th onclick="sortBy('name')" style="min-width:200px">Name <span class="si" id="si_name">↕</span></th>
+            <th onclick="sortBy('country')">Country <span class="si" id="si_country">↕</span></th>
+            <th onclick="sortBy('region')">Region <span class="si" id="si_region">↕</span></th>
+            <th onclick="sortBy('type')">Type <span class="si" id="si_type">↕</span></th>
+            <th onclick="sortBy('disaster')">Disaster <span class="si" id="si_disaster">↕</span></th>
+            <th onclick="sortBy('status')">Status <span class="si" id="si_status">↕</span></th>
+            <th onclick="sortBy('date')">Approved <span class="si" id="si_date">↕</span></th>
+            <th onclick="sortBy('budget')" class="num">Total Budget <span class="si" id="si_budget">↕</span></th>
+            <th style="min-width:110px">EA Coverage</th>
+            <th onclick="sortBy('people')" class="num">People Targeted <span class="si" id="si_people">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"><tr><td colspan="11" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <div class="pg-info" id="pgInfo">—</div>
+      <div class="pg-btns" id="pgBtns"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   CONFIG
+================================================================ */
+const API   = 'https://goadmin.ifrc.org/api/v2';
+
+const SECTORS = [
+  { key: 'sector_shelter_and_basic_household_items',           label: 'Shelter & NFIs',             color: '#3B82F6' },
+  { key: 'sector_livelihoods',                                 label: 'Livelihoods',                 color: '#10B981' },
+  { key: 'sector_multi_purpose_cash_grants',                   label: 'Cash Grants',                 color: '#F59E0B' },
+  { key: 'sector_health',                                      label: 'Health',                      color: '#EF4444' },
+  { key: 'sector_water_sanitation_and_hygiene',                label: 'WASH',                        color: '#06B6D4' },
+  { key: 'sector_protection_gender_and_inclusion',             label: 'Protection & Gender',         color: '#8B5CF6' },
+  { key: 'sector_education',                                   label: 'Education',                   color: '#F97316' },
+  { key: 'sector_migration_and_displacement',                  label: 'Migration',                   color: '#EC4899' },
+  { key: 'sector_risk_reduction_climate_adaptation_and_recovery', label: 'Risk Reduction',          color: '#84CC16' },
+  { key: 'sector_community_engagement_and_accountability',     label: 'CEA',                         color: '#14B8A6' },
+  { key: 'sector_environmental_sustainability',                label: 'Environment',                 color: '#6366F1' },
+  { key: 'sector_coordination_and_partnerships',               label: 'Coordination',                color: '#D97706' },
+  { key: 'sector_secretariat_services',                        label: 'Secretariat Services',        color: '#9CA3AF' },
+  { key: 'sector_national_society_strengthening',              label: 'NS Strengthening',            color: '#1D4ED8' },
+];
+
+const DISASTER_PILL = {
+  'Epidemic': 'pill-ep', 'Flood': 'pill-fl', 'Cyclone': 'pill-cy', 'Earthquake': 'pill-eq'
+};
+
+/* ================================================================
+   STATE
+================================================================ */
+let drefOps     = [];   // one entry per DREF operation (grouped from dref3 stages)
+let eaOps       = [];   // one entry per EA
+let filtered    = [];
+let sortCfg     = { field: 'date', dir: 'desc' };
+let page        = 1;
+const PG        = 25;
+const charts    = {};
+
+/* ================================================================
+   FETCH
+================================================================ */
+async function fetchDref3() {
+  const res = await fetch('/api/dref3');
+  if (!res.ok) throw new Error('DREF3 ' + res.status);
+  return res.json();
+}
+
+async function fetchAllEA() {
+  prog('Loading Emergency Appeals…');
+  const res = await fetch('/api/appeals');
+  if (!res.ok) throw new Error('EA ' + res.status);
+  return res.json();
+}
+
+/* ================================================================
+   PROCESS
+================================================================ */
+function processDref(raw) {
+  const groups = {};
+  raw.forEach(r => {
+    if (!groups[r.appeal_id]) groups[r.appeal_id] = [];
+    groups[r.appeal_id].push(r);
+  });
+
+  return Object.entries(groups).map(([aid, stages]) => {
+    const latest = stages.find(s => s.is_latest_stage) || stages.at(-1);
+    const app    = stages.find(s => s.stage === 'Application') || stages[0];
+
+    const date =
+      app.date_of_approval ||
+      app.start_date_of_operation ||
+      latest.start_date_of_operation ||
+      (latest.modified_at || '').substring(0, 10);
+
+    const sectorBudgets = {};
+    SECTORS.forEach(s => { sectorBudgets[s.key] = latest[s.key + '_budget'] || 0; });
+
+    return {
+      _src:         'dref',
+      appeal_id:    aid,
+      name:         (app.disaster_name || latest.disaster_name || '—'),
+      country:      app.country || latest.country || '—',
+      country_iso3: app.country_iso3 || latest.country_iso3,
+      region:       app.region || latest.region || '—',
+      disaster:     latest.disaster_definition || app.disaster_definition || '—',
+      appeal_type:  latest.appeal_type || 'DREF',
+      stage:        latest.stage,
+      status:       latest.operation_status || app.operation_status || '',
+      date,
+      total_budget: latest.total_approved || app.amount_approved || 0,
+      people_targeted: latest.people_targeted || app.people_targeted || 0,
+      people_assisted: latest.people_assisted,
+      link:         latest.link_to_emergency_page || app.link_to_emergency_page,
+      stages,
+      sectorBudgets,
+    };
+  });
+}
+
+function processEA(raw) {
+  return raw.map(r => ({
+    _src:         'ea',
+    appeal_id:    r.code,
+    name:         r.name || '—',
+    country:      r.country?.name || '—',
+    country_iso3: r.country?.iso3,
+    region:       r.region?.region_name || '—',
+    disaster:     r.dtype?.name || '—',
+    appeal_type:  'Emergency Appeal',
+    stage:        null,
+    status:       r.status === 0 ? 'active' : 'closed',
+    date:         (r.start_date || '').substring(0, 10),
+    total_budget: r.amount_requested || 0,
+    amount_funded: r.amount_funded || 0,
+    people_targeted: r.num_beneficiaries || 0,
+    link:         null,
+    stages:       null,
+    sectorBudgets: null,
+  }));
+}
+
+/* ================================================================
+   LOAD
+================================================================ */
+async function loadData() {
+  try {
+    prog('Fetching DREF operations and Emergency Appeals…');
+    const [dref3, eas] = await Promise.all([fetchDref3(), fetchAllEA()]);
+
+    prog('Processing data…');
+    drefOps = processDref(dref3);
+    eaOps   = processEA(eas);
+
+    populateYears();
+    applyFilters();
+    document.getElementById('overlay').style.display = 'none';
+  } catch (e) {
+    prog('Error: ' + e.message);
+    console.error(e);
+  }
+}
+
+function prog(msg) { document.getElementById('loadProg').textContent = msg; }
+
+function populateYears() {
+  const yrs = new Set();
+  [...drefOps, ...eaOps].forEach(op => {
+    if (op.date) yrs.add(new Date(op.date).getFullYear());
+  });
+  const sorted = [...yrs].filter(y => y >= 2018 && y <= 2026).sort((a, b) => b - a);
+  ['fYearFrom', 'fYearTo'].forEach(id => {
+    const sel = document.getElementById(id);
+    sorted.forEach(y => {
+      const o = document.createElement('option'); o.value = y; o.textContent = y; sel.appendChild(o);
+    });
+  });
+}
+
+/* ================================================================
+   FILTER & SORT
+================================================================ */
+function applyFilters() {
+  const type      = document.getElementById('fType').value;
+  const yearFrom  = document.getElementById('fYearFrom').value;
+  const yearTo    = document.getElementById('fYearTo').value;
+  const stat      = document.getElementById('fStatus').value;
+  const reg       = document.getElementById('fRegion').value;
+  const dis       = document.getElementById('fDisaster').value.toLowerCase().trim();
+  const nm        = document.getElementById('fName').value.toLowerCase().trim();
+  page = 1;
+
+  // Update active tag highlights
+  document.querySelectorAll('.tag').forEach(t => t.classList.remove('active-tag'));
+  if (dis) {
+    document.querySelectorAll('.tag').forEach(t => {
+      if (t.textContent.toLowerCase().includes(dis)) t.classList.add('active-tag');
+    });
+  }
+
+  let pool = [];
+  if (type !== 'ea')   pool.push(...drefOps);
+  if (type !== 'dref') pool.push(...eaOps);
+
+  filtered = pool.filter(op => {
+    if (op.date && (yearFrom !== 'all' || yearTo !== 'all')) {
+      const y = new Date(op.date).getFullYear();
+      if (yearFrom !== 'all' && y < +yearFrom) return false;
+      if (yearTo   !== 'all' && y > +yearTo)   return false;
+    }
+    if (stat !== 'all') {
+      const isActive = ['active', 'ongoing'].includes((op.status || '').toLowerCase());
+      if (stat === 'active' && !isActive)  return false;
+      if (stat === 'closed' && isActive)   return false;
+    }
+    if (reg !== 'all' && op.region !== reg) return false;
+    if (dis && !(op.disaster || '').toLowerCase().includes(dis)) return false;
+    if (nm) {
+      const h = `${op.name} ${op.appeal_id} ${op.country}`.toLowerCase();
+      if (!h.includes(nm)) return false;
+    }
+    return true;
+  });
+
+  sortOps();
+  updateStats();
+  updateCharts();
+  renderTable();
+}
+
+function resetFilters() {
+  ['fType','fYearFrom','fYearTo','fStatus','fRegion'].forEach(id => document.getElementById(id).value = 'all');
+  document.getElementById('fDisaster').value = '';
+  document.getElementById('fName').value = '';
+  applyFilters();
+}
+
+function quickFilter(term) {
+  document.getElementById('fDisaster').value = term;
+  applyFilters();
+}
+
+function sortOps() {
+  const { field, dir } = sortCfg;
+  const m = dir === 'asc' ? 1 : -1;
+  filtered.sort((a, b) => {
+    let va, vb;
+    if (field === 'appeal_id') { va = a.appeal_id; vb = b.appeal_id; }
+    else if (field === 'name')    { va = a.name;    vb = b.name; }
+    else if (field === 'country') { va = a.country; vb = b.country; }
+    else if (field === 'region')  { va = a.region;  vb = b.region; }
+    else if (field === 'type')    { va = a._src;    vb = b._src; }
+    else if (field === 'disaster'){ va = a.disaster; vb = b.disaster; }
+    else if (field === 'status')  { va = a.status;  vb = b.status; }
+    else if (field === 'date')    { va = a.date;    vb = b.date; }
+    else if (field === 'budget')  { va = a.total_budget;    vb = b.total_budget; }
+    else if (field === 'people')  { va = a.people_targeted; vb = b.people_targeted; }
+    else { va = ''; vb = ''; }
+    if (typeof va === 'string') return m * (va||'').localeCompare(vb||'');
+    return m * ((va||0) - (vb||0));
+  });
+}
+
+function sortBy(field) {
+  sortCfg = { field, dir: sortCfg.field === field && sortCfg.dir === 'desc' ? 'asc' : 'desc' };
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+  document.querySelectorAll('.si').forEach(el => { el.textContent = '↕'; el.closest('th')?.classList.remove('sorted'); });
+  const el = document.getElementById('si_' + field);
+  if (el) { el.textContent = sortCfg.dir === 'asc' ? '↑' : '↓'; el.closest('th').classList.add('sorted'); }
+  sortOps();
+  renderTable();
+}
+
+/* ================================================================
+   STATS
+================================================================ */
+function updateStats() {
+  const drefs = filtered.filter(o => o._src === 'dref');
+  const eas   = filtered.filter(o => o._src === 'ea');
+
+  const totalBudget   = filtered.reduce((s, o) => s + (o.total_budget || 0), 0);
+  const totalPeople   = filtered.reduce((s, o) => s + (o.people_targeted || 0), 0);
+  const countries     = new Set(filtered.map(o => o.country_iso3).filter(Boolean));
+  const eaReq         = eas.reduce((s, o) => s + (o.total_budget || 0), 0);
+  const eaFunded      = eas.reduce((s, o) => s + (o.amount_funded || 0), 0);
+  const coverage      = eaReq > 0 ? (eaFunded / eaReq * 100).toFixed(1) : '—';
+
+  document.getElementById('sOps').textContent       = filtered.length.toLocaleString();
+  document.getElementById('sOpsSub').textContent     = `${drefs.length} DREF · ${eas.length} EA`;
+  document.getElementById('sBudget').textContent     = fMoney(totalBudget);
+  document.getElementById('sBudgetSub').textContent  = `across ${filtered.length} operations`;
+  document.getElementById('sPeople').textContent     = fNum(totalPeople);
+  document.getElementById('sPeopleSub').textContent  = 'across filtered operations';
+  document.getElementById('sCoverage').textContent   = coverage === '—' ? '—' : `${coverage}%`;
+  document.getElementById('sCountries').textContent  = countries.size;
+  document.getElementById('sCountriesSub').textContent = `unique countries`;
+
+  // Health & WASH KPIs
+  const drefOnly      = filtered.filter(o => o._src === 'dref' && o.sectorBudgets);
+  const drefTotal     = drefOnly.reduce((s, o) => s + (o.total_budget || 0), 0);
+  const healthSum     = drefOnly.reduce((s, o) => s + (o.sectorBudgets.sector_health || 0), 0);
+  const washSum       = drefOnly.reduce((s, o) => s + (o.sectorBudgets.sector_water_sanitation_and_hygiene || 0), 0);
+  const hwSum         = healthSum + washSum;
+  const pct = v => drefTotal > 0 ? `${(v / drefTotal * 100).toFixed(1)}% of total DREF budget` : '—';
+
+  document.getElementById('sHealth').textContent    = fMoney(healthSum);
+  document.getElementById('sHealthPct').textContent = pct(healthSum);
+  document.getElementById('sWash').textContent      = fMoney(washSum);
+  document.getElementById('sWashPct').textContent   = pct(washSum);
+  document.getElementById('sHWCombo').textContent   = fMoney(hwSum);
+  document.getElementById('sHWComboPct').textContent = pct(hwSum);
+}
+
+/* ================================================================
+   CHARTS
+================================================================ */
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+function updateCharts() {
+  drawYearChart();
+  drawRegionChart();
+  drawSectorChart();
+  drawDtypeChart();
+  drawHWYearChart();
+  drawHWRegionChart();
+}
+
+/* Operations by Year */
+function drawYearChart() {
+  destroyChart('year');
+  const byYear = {};
+  filtered.forEach(op => {
+    if (!op.date) return;
+    const y = new Date(op.date).getFullYear();
+    if (y < 2018 || y > 2026) return;
+    if (!byYear[y]) byYear[y] = { dref: 0, ea: 0 };
+    if (op._src === 'dref') byYear[y].dref++;
+    else byYear[y].ea++;
+  });
+  const years = Object.keys(byYear).sort();
+  charts['year'] = new Chart(document.getElementById('cYear').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [
+        { label: 'DREF',              data: years.map(y => byYear[y].dref), backgroundColor: '#F5333F', borderRadius: 3, stack: 's' },
+        { label: 'Emergency Appeal',  data: years.map(y => byYear[y].ea),  backgroundColor: '#FF6B35', borderRadius: 3, stack: 's' },
+      ]
+    },
+    options: chartOpts({ legend: true, ySuffix: '' })
+  });
+}
+
+/* Operations by Region */
+function drawRegionChart() {
+  destroyChart('region');
+  const counts = {};
+  filtered.forEach(op => { counts[op.region] = (counts[op.region]||0) + 1; });
+  const rows = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  const RCOLS = ['#F5333F','#FF6B35','#F59E0B','#10B981','#3B82F6','#8B5CF6'];
+  charts['region'] = new Chart(document.getElementById('cRegion').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r=>r[0]),
+      datasets: [{ label:'Operations', data: rows.map(r=>r[1]), backgroundColor: rows.map((_,i)=>RCOLS[i%RCOLS.length]), borderRadius: 4 }]
+    },
+    options: { ...chartOpts({ legend: false }), indexAxis: 'y' }
+  });
+}
+
+/* Budget by Sector (DREF only) */
+function drawSectorChart() {
+  destroyChart('sector');
+  const drefFiltered = filtered.filter(o => o._src === 'dref' && o.sectorBudgets);
+  const totals = SECTORS.map(s => {
+    const sum = drefFiltered.reduce((acc, op) => acc + (op.sectorBudgets[s.key] || 0), 0);
+    return { label: s.label, sum, color: s.color };
+  }).filter(s => s.sum > 0).sort((a,b) => b.sum - a.sum);
+
+  charts['sector'] = new Chart(document.getElementById('cSector').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: totals.map(s => s.label),
+      datasets: [{ label: 'Budget (CHF)', data: totals.map(s => s.sum), backgroundColor: totals.map(s => s.color), borderRadius: 4 }]
+    },
+    options: {
+      ...chartOpts({ legend: false }),
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + fMoney(ctx.raw) } }
+      },
+      scales: {
+        x: { grid: { color: '#F3F4F6' }, ticks: { font:{size:11}, callback: v => fMoney(v) } },
+        y: { grid: { display: false }, ticks: { font:{size:11} } }
+      }
+    }
+  });
+}
+
+/* Disaster Types */
+function drawDtypeChart() {
+  destroyChart('dtype');
+  const counts = {};
+  filtered.forEach(op => { counts[op.disaster] = (counts[op.disaster]||0) + 1; });
+  let rows = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  if (rows.length > 9) {
+    const other = rows.slice(9).reduce((s,[,v]) => s+v, 0);
+    rows = [...rows.slice(0,9), ['Other', other]];
+  }
+  const DCOLS = ['#F5333F','#3B82F6','#F59E0B','#10B981','#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#9CA3AF'];
+  charts['dtype'] = new Chart(document.getElementById('cDtype').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: rows.map(r=>r[0]),
+      datasets: [{ data: rows.map(r=>r[1]), backgroundColor: DCOLS.slice(0,rows.length), borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8, boxHeight: 8,
+            generateLabels: chart => chart.data.labels.map((lbl,i) => ({
+              text: `${lbl} (${chart.data.datasets[0].data[i]})`,
+              fillStyle: chart.data.datasets[0].backgroundColor[i],
+              strokeStyle: '#fff', pointStyle: 'circle', index: i,
+            }))
+          }
+        }
+      }
+    }
+  });
+}
+
+/* Health & WASH by Year */
+function drawHWYearChart() {
+  destroyChart('hwYear');
+  const ops = filtered.filter(o => o._src === 'dref' && o.sectorBudgets && o.date);
+  const byYear = {};
+  ops.forEach(op => {
+    const y = new Date(op.date).getFullYear();
+    if (y < 2018 || y > 2026) return;
+    const yk = String(y);
+    if (!byYear[yk]) byYear[yk] = { health: 0, wash: 0 };
+    byYear[yk].health += op.sectorBudgets.sector_health || 0;
+    byYear[yk].wash   += op.sectorBudgets.sector_water_sanitation_and_hygiene || 0;
+  });
+  const years = Object.keys(byYear).sort();
+  charts['hwYear'] = new Chart(document.getElementById('cHWYear').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [
+        { label: 'Health', data: years.map(y => byYear[y].health), backgroundColor: '#EF4444', borderRadius: 3 },
+        { label: 'WASH',   data: years.map(y => byYear[y].wash),   backgroundColor: '#06B6D4', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { font:{size:11}, usePointStyle:true, pointStyleWidth:8 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font:{size:11} } },
+        y: { grid: { color: '#F3F4F6' }, ticks: { font:{size:11}, callback: v => fMoney(v) } }
+      }
+    }
+  });
+}
+
+/* Health & WASH by Region */
+function drawHWRegionChart() {
+  destroyChart('hwRegion');
+  const ops = filtered.filter(o => o._src === 'dref' && o.sectorBudgets);
+  const byRegion = {};
+  ops.forEach(op => {
+    const r = op.region || 'Unknown';
+    if (!byRegion[r]) byRegion[r] = { health: 0, wash: 0 };
+    byRegion[r].health += op.sectorBudgets.sector_health || 0;
+    byRegion[r].wash   += op.sectorBudgets.sector_water_sanitation_and_hygiene || 0;
+  });
+  const rows = Object.entries(byRegion)
+    .map(([r, v]) => ({ r, ...v, total: v.health + v.wash }))
+    .sort((a, b) => b.total - a.total);
+  charts['hwRegion'] = new Chart(document.getElementById('cHWRegion').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.r),
+      datasets: [
+        { label: 'Health', data: rows.map(r => r.health), backgroundColor: '#EF4444', borderRadius: 3, stack: 's' },
+        { label: 'WASH',   data: rows.map(r => r.wash),   backgroundColor: '#06B6D4', borderRadius: 3, stack: 's' },
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { font:{size:11}, usePointStyle:true, pointStyleWidth:8 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}`,
+            afterBody: items => {
+              const total = items.reduce((s, i) => s + i.raw, 0);
+              return total > 0 ? [`Total: ${fMoney(total)}`] : [];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#F3F4F6' }, ticks: { font:{size:11}, callback: v => fMoney(v) } },
+        y: { grid: { display: false }, ticks: { font:{size:11} } }
+      }
+    }
+  });
+}
+
+function chartOpts({ legend = true, ySuffix = '' } = {}) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: legend ? { position: 'top', labels: { font:{size:11}, usePointStyle:true, pointStyleWidth:8 } } : { display: false }
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { font:{size:11} } },
+      y: { grid: { color: '#F3F4F6' }, ticks: { font:{size:11}, precision: 0 } }
+    }
+  };
+}
+
+/* ================================================================
+   TABLE
+================================================================ */
+function renderTable() {
+  const start = (page - 1) * PG;
+  const slice = filtered.slice(start, start + PG);
+
+  document.getElementById('tblCount').textContent = `${filtered.length.toLocaleString()} records`;
+
+  const tbody = document.getElementById('tblBody');
+  if (!slice.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">No operations match the current filters.</td></tr>';
+    document.getElementById('pgInfo').textContent  = '0 results';
+    document.getElementById('pgBtns').innerHTML   = '';
+    return;
+  }
+
+  tbody.innerHTML = slice.map(op => {
+    const typeBadge = op._src === 'dref'
+      ? `<span class="badge b-dref">DREF</span>`
+      : `<span class="badge b-ea">EA</span>`;
+
+    const disClass  = DISASTER_PILL[op.disaster] || '';
+    const disPill   = `<span class="pill ${disClass}">${op.disaster}</span>`;
+
+    const stat = (op.status || '').toLowerCase();
+    const statBadge = ['active','ongoing'].includes(stat)
+      ? `<span class="badge b-active">Active</span>`
+      : stat === 'closed'
+        ? `<span class="badge b-closed">Closed</span>`
+        : op.stage
+          ? `<span class="badge b-stage">${op.stage}</span>`
+          : '<span style="color:var(--faint)">—</span>';
+
+    const nameCell = op.link
+      ? `<a href="${op.link}" target="_blank" rel="noopener">${op.name}</a>`
+      : op.name;
+
+    let coverageCell = '—';
+    if (op._src === 'ea' && op.total_budget > 0) {
+      const pct   = Math.min(op.amount_funded / op.total_budget * 100, 100);
+      const cls   = pct >= 85 ? 'green' : pct >= 45 ? 'yellow' : 'red';
+      coverageCell = `<div class="bbar-wrap">
+        <div class="bbar-bg"><div class="bbar-fill ${cls}" style="width:${pct.toFixed(0)}%"></div></div>
+        <span class="bbar-pct">${pct.toFixed(0)}%</span>
+      </div>`;
+    }
+
+    return `<tr>
+      <td><span class="mono">${op.appeal_id}</span></td>
+      <td class="td-name">${nameCell}</td>
+      <td>${op.country}</td>
+      <td style="color:var(--muted);font-size:11px">${op.region}</td>
+      <td>${typeBadge}</td>
+      <td>${disPill}</td>
+      <td>${statBadge}</td>
+      <td style="color:var(--muted);font-size:11px">${op.date || '—'}</td>
+      <td class="num">${fMoney(op.total_budget)}</td>
+      <td>${coverageCell}</td>
+      <td class="num">${fNum(op.people_targeted)}</td>
+    </tr>`;
+  }).join('');
+
+  const total     = filtered.length;
+  const totalPgs  = Math.ceil(total / PG);
+  const from      = start + 1;
+  const to        = Math.min(start + PG, total);
+  document.getElementById('pgInfo').textContent = `Showing ${from}–${to} of ${total.toLocaleString()} operations`;
+  renderPagination(totalPgs);
+}
+
+function renderPagination(total) {
+  const btn = (p, label, disabled = false, active = false) =>
+    `<button class="pg-btn${active?' active':''}" onclick="goPage(${p})" ${disabled?'disabled':''}>${label}</button>`;
+
+  let pages = [];
+  if (total <= 7) pages = Array.from({length:total}, (_,i) => i+1);
+  else if (page <= 4)          pages = [1,2,3,4,5,'…',total];
+  else if (page >= total - 3)  pages = [1,'…',total-4,total-3,total-2,total-1,total];
+  else                         pages = [1,'…',page-1,page,page+1,'…',total];
+
+  document.getElementById('pgBtns').innerHTML =
+    btn(page-1, '‹', page===1) +
+    pages.map(p => p==='…' ? '<button class="pg-btn" disabled>…</button>' : btn(p, p, false, p===page)).join('') +
+    btn(page+1, '›', page===total);
+}
+
+function goPage(p) {
+  const max = Math.ceil(filtered.length / PG);
+  if (p < 1 || p > max) return;
+  page = p;
+  renderTable();
+  document.querySelector('.tbl-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ================================================================
+   FORMATTERS
+================================================================ */
+function fMoney(v) {
+  if (!v || v === 0) return '—';
+  if (v >= 1e9) return `CHF ${(v/1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `CHF ${(v/1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `CHF ${(v/1e3).toFixed(0)}K`;
+  return `CHF ${v.toFixed(0)}`;
+}
+function fNum(v) {
+  if (!v || v === 0) return '—';
+  if (v >= 1e6) return `${(v/1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${(v/1e3).toFixed(0)}K`;
+  return v.toLocaleString();
+}
+
+/* ================================================================
+   INIT
+================================================================ */
+loadData();
+</script>
+</body>
+</html>
