@@ -288,7 +288,16 @@ function baseOpts(legend = true) {
   };
 }
 
+const moneyTooltip = { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}` } };
+const moneyAxisX   = { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, callback: v => fMoney(v) } };
+const moneyAxisY   = { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, callback: v => fMoney(v) } };
+const plainAxisX   = { grid: { display: false }, ticks: { font: { size: 11 } } };
+const plainAxisY   = { grid: { display: false }, ticks: { font: { size: 11 } } };
+
 function drawCharts(filtered, refs, instances) {
+  const withSectors  = filtered.filter(o => o.sectorBudgets);
+  const hasSectorData = withSectors.length > 0;
+
   // Operations by Year
   if (refs.year) {
     const byYear = {};
@@ -328,30 +337,42 @@ function drawCharts(filtered, refs, instances) {
     });
   }
 
-  // Budget by Sector
+  // Budget by Sector  –OR–  Requested vs Funded overview for EA
   if (refs.sector) {
-    const drefOnly = filtered.filter(o => o.sectorBudgets);
-    const totals = SECTORS.map(s => ({
-      label: s.label,
-      sum: drefOnly.reduce((acc, op) => acc + (op.sectorBudgets[s.key] || 0), 0),
-      color: s.color,
-    })).filter(s => s.sum > 0).sort((a, b) => b.sum - a.sum);
-    instances.sector = new Chart(refs.sector, {
-      type: 'bar',
-      data: {
-        labels: totals.map(s => s.label),
-        datasets: [{ label: 'Budget (CHF)', data: totals.map(s => s.sum), backgroundColor: totals.map(s => s.color), borderRadius: 4 }],
-      },
-      options: {
-        ...baseOpts(false),
-        indexAxis: 'y',
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + fMoney(ctx.raw) } } },
-        scales: {
-          x: { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, callback: v => fMoney(v) } },
-          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+    if (hasSectorData) {
+      const totals = SECTORS.map(s => ({
+        label: s.label,
+        sum: withSectors.reduce((acc, op) => acc + (op.sectorBudgets[s.key] || 0), 0),
+        color: s.color,
+      })).filter(s => s.sum > 0).sort((a, b) => b.sum - a.sum);
+      instances.sector = new Chart(refs.sector, {
+        type: 'bar',
+        data: {
+          labels: totals.map(s => s.label),
+          datasets: [{ label: 'Budget (CHF)', data: totals.map(s => s.sum), backgroundColor: totals.map(s => s.color), borderRadius: 4 }],
         },
-      },
-    });
+        options: {
+          ...baseOpts(false), indexAxis: 'y',
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + fMoney(ctx.raw) } } },
+          scales: { x: moneyAxisX, y: plainAxisY },
+        },
+      });
+    } else {
+      const totalReq    = filtered.reduce((s, o) => s + (o.total_budget  || 0), 0);
+      const totalFunded = filtered.reduce((s, o) => s + (o.amount_funded || 0), 0);
+      instances.sector = new Chart(refs.sector, {
+        type: 'bar',
+        data: {
+          labels: ['Amount Requested', 'Amount Funded'],
+          datasets: [{ data: [totalReq, totalFunded], backgroundColor: ['#FF6B35', '#10B981'], borderRadius: 4 }],
+        },
+        options: {
+          ...baseOpts(false), indexAxis: 'y',
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + fMoney(ctx.raw) } } },
+          scales: { x: moneyAxisX, y: plainAxisY },
+        },
+      });
+    }
   }
 
   // Disaster Types
@@ -388,86 +409,128 @@ function drawCharts(filtered, refs, instances) {
     });
   }
 
-  // Health & WASH by Year
+  // Budget by Year  –  H&W breakdown (DREF) or Requested vs Funded (EA)
   if (refs.hwYear) {
-    const ops = filtered.filter(o => o.sectorBudgets && o.date);
-    const byYear = {};
-    ops.forEach(op => {
-      const y = new Date(op.date).getFullYear();
-      if (y < 2018 || y > 2026) return;
-      const yk = String(y);
-      if (!byYear[yk]) byYear[yk] = { health: 0, wash: 0 };
-      byYear[yk].health += op.sectorBudgets.sector_health || 0;
-      byYear[yk].wash += op.sectorBudgets.sector_water_sanitation_and_hygiene || 0;
-    });
-    const yrs = Object.keys(byYear).sort();
-    instances.hwYear = new Chart(refs.hwYear, {
-      type: 'bar',
-      data: {
-        labels: yrs,
-        datasets: [
-          { label: 'Health', data: yrs.map(y => byYear[y].health), backgroundColor: '#EF4444', borderRadius: 3 },
-          { label: 'WASH',   data: yrs.map(y => byYear[y].wash),   backgroundColor: '#06B6D4', borderRadius: 3 },
-        ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 } },
-          tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}` } },
+    if (hasSectorData) {
+      const byYear = {};
+      withSectors.filter(o => o.date).forEach(op => {
+        const y = new Date(op.date).getFullYear();
+        if (y < 2018 || y > 2026) return;
+        const yk = String(y);
+        if (!byYear[yk]) byYear[yk] = { health: 0, wash: 0 };
+        byYear[yk].health += op.sectorBudgets.sector_health || 0;
+        byYear[yk].wash   += op.sectorBudgets.sector_water_sanitation_and_hygiene || 0;
+      });
+      const yrs = Object.keys(byYear).sort();
+      instances.hwYear = new Chart(refs.hwYear, {
+        type: 'bar',
+        data: {
+          labels: yrs,
+          datasets: [
+            { label: 'Health', data: yrs.map(y => byYear[y].health), backgroundColor: '#EF4444', borderRadius: 3 },
+            { label: 'WASH',   data: yrs.map(y => byYear[y].wash),   backgroundColor: '#06B6D4', borderRadius: 3 },
+          ],
         },
-        scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-          y: { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, callback: v => fMoney(v) } },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 } }, tooltip: moneyTooltip },
+          scales: { x: plainAxisX, y: moneyAxisY },
         },
-      },
-    });
+      });
+    } else {
+      const byYear = {};
+      filtered.filter(o => o.date).forEach(op => {
+        const y = new Date(op.date).getFullYear();
+        if (y < 2018 || y > 2026) return;
+        const yk = String(y);
+        if (!byYear[yk]) byYear[yk] = { req: 0, funded: 0 };
+        byYear[yk].req    += op.total_budget   || 0;
+        byYear[yk].funded += op.amount_funded  || 0;
+      });
+      const yrs = Object.keys(byYear).sort();
+      instances.hwYear = new Chart(refs.hwYear, {
+        type: 'bar',
+        data: {
+          labels: yrs,
+          datasets: [
+            { label: 'Requested', data: yrs.map(y => byYear[y].req),    backgroundColor: '#FF6B35', borderRadius: 3 },
+            { label: 'Funded',    data: yrs.map(y => byYear[y].funded), backgroundColor: '#10B981', borderRadius: 3 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 } }, tooltip: moneyTooltip },
+          scales: { x: plainAxisX, y: moneyAxisY },
+        },
+      });
+    }
   }
 
-  // Health & WASH by Region
+  // Budget by Region  –  H&W breakdown (DREF) or Requested vs Funded (EA)
   if (refs.hwRegion) {
-    const ops = filtered.filter(o => o.sectorBudgets);
-    const byRegion = {};
-    ops.forEach(op => {
-      const r = op.region || 'Unknown';
-      if (!byRegion[r]) byRegion[r] = { health: 0, wash: 0 };
-      byRegion[r].health += op.sectorBudgets.sector_health || 0;
-      byRegion[r].wash += op.sectorBudgets.sector_water_sanitation_and_hygiene || 0;
-    });
-    const rows = Object.entries(byRegion)
-      .map(([r, v]) => ({ r, ...v, total: v.health + v.wash }))
-      .sort((a, b) => b.total - a.total);
-    instances.hwRegion = new Chart(refs.hwRegion, {
-      type: 'bar',
-      data: {
-        labels: rows.map(r => r.r),
-        datasets: [
-          { label: 'Health', data: rows.map(r => r.health), backgroundColor: '#EF4444', borderRadius: 3, stack: 's' },
-          { label: 'WASH',   data: rows.map(r => r.wash),   backgroundColor: '#06B6D4', borderRadius: 3, stack: 's' },
-        ],
-      },
-      options: {
-        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 } },
-          tooltip: {
-            callbacks: {
-              label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}`,
-              afterBody: items => {
-                const total = items.reduce((s, i) => s + i.raw, 0);
-                return total > 0 ? [`Total: ${fMoney(total)}`] : [];
-              },
-            },
+    if (hasSectorData) {
+      const byRegion = {};
+      withSectors.forEach(op => {
+        const r = op.region || 'Unknown';
+        if (!byRegion[r]) byRegion[r] = { health: 0, wash: 0 };
+        byRegion[r].health += op.sectorBudgets.sector_health || 0;
+        byRegion[r].wash   += op.sectorBudgets.sector_water_sanitation_and_hygiene || 0;
+      });
+      const rows = Object.entries(byRegion)
+        .map(([r, v]) => ({ r, ...v, total: v.health + v.wash }))
+        .sort((a, b) => b.total - a.total);
+      instances.hwRegion = new Chart(refs.hwRegion, {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.r),
+          datasets: [
+            { label: 'Health', data: rows.map(r => r.health), backgroundColor: '#EF4444', borderRadius: 3, stack: 's' },
+            { label: 'WASH',   data: rows.map(r => r.wash),   backgroundColor: '#06B6D4', borderRadius: 3, stack: 's' },
+          ],
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 } },
+            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}`, afterBody: items => { const t = items.reduce((s, i) => s + i.raw, 0); return t > 0 ? [`Total: ${fMoney(t)}`] : []; } } },
           },
+          scales: { x: moneyAxisX, y: plainAxisY },
         },
-        scales: {
-          x: { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, callback: v => fMoney(v) } },
-          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      });
+    } else {
+      const byRegion = {};
+      filtered.forEach(op => {
+        const r = op.region || 'Unknown';
+        if (!byRegion[r]) byRegion[r] = { req: 0, funded: 0 };
+        byRegion[r].req    += op.total_budget   || 0;
+        byRegion[r].funded += op.amount_funded  || 0;
+      });
+      const rows = Object.entries(byRegion)
+        .map(([r, v]) => ({ r, ...v }))
+        .sort((a, b) => b.req - a.req);
+      instances.hwRegion = new Chart(refs.hwRegion, {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.r),
+          datasets: [
+            { label: 'Requested', data: rows.map(r => r.req),    backgroundColor: '#FF6B35', borderRadius: 3, stack: 's' },
+            { label: 'Funded',    data: rows.map(r => r.funded), backgroundColor: '#10B981', borderRadius: 3, stack: 's' },
+          ],
         },
-      },
-    });
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 } },
+            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fMoney(ctx.raw)}`, afterBody: items => { const t = items.reduce((s, i) => s + i.raw, 0); return t > 0 ? [`Total: ${fMoney(t)}`] : []; } } },
+          },
+          scales: { x: moneyAxisX, y: plainAxisY },
+        },
+      });
+    }
   }
 }
 
@@ -555,12 +618,13 @@ export default function App() {
     const eaReq    = eas.reduce((s, o) => s + (o.total_budget || 0), 0);
     const eaFunded = eas.reduce((s, o) => s + (o.amount_funded || 0), 0);
     const coverage = eaReq > 0 ? (eaFunded / eaReq) * 100 : null;
-    const withSectors = filtered.filter(o => o.sectorBudgets);
-    const sectorTotal = withSectors.reduce((s, o) => s + (o.total_budget || 0), 0);
-    const healthSum   = withSectors.reduce((s, o) => s + (o.sectorBudgets.sector_health || 0), 0);
-    const washSum     = withSectors.reduce((s, o) => s + (o.sectorBudgets.sector_water_sanitation_and_hygiene || 0), 0);
+    const totalFunded   = filtered.reduce((s, o) => s + (o.amount_funded || 0), 0);
+    const withSectors   = filtered.filter(o => o.sectorBudgets);
+    const sectorTotal   = withSectors.reduce((s, o) => s + (o.total_budget || 0), 0);
+    const healthSum     = withSectors.reduce((s, o) => s + (o.sectorBudgets.sector_health || 0), 0);
+    const washSum       = withSectors.reduce((s, o) => s + (o.sectorBudgets.sector_water_sanitation_and_hygiene || 0), 0);
     const hasSectorData = withSectors.length > 0;
-    return { total: filtered.length, drefCount: drefs.length, eaCount: eas.length, totalBudget, totalPeople, countries, coverage, sectorTotal, healthSum, washSum, hasSectorData };
+    return { total: filtered.length, drefCount: drefs.length, eaCount: eas.length, totalBudget, totalFunded, totalPeople, countries, coverage, sectorTotal, healthSum, washSum, hasSectorData };
   }, [filtered]);
 
   useEffect(() => {
@@ -733,13 +797,16 @@ export default function App() {
         {/* ── Charts row 2 ── */}
         <div className="charts-bot">
           <div className="card">
-            <div className="card-title">Budget by Sector</div>
-            <div className="card-sub">Total approved budget per sector across filtered operations (CHF)</div>
-            <div className="chart-wrap chart-tall" style={{ position: 'relative' }}>
+            <div className="card-title">
+              {stats.hasSectorData ? 'Budget by Sector' : 'Budget Overview'}
+            </div>
+            <div className="card-sub">
+              {stats.hasSectorData
+                ? 'Total approved budget per sector across filtered operations (CHF)'
+                : 'Total amount requested vs funded across filtered operations (CHF)'}
+            </div>
+            <div className="chart-wrap chart-tall">
               <canvas ref={sectorRef} />
-              {!stats.hasSectorData && (
-                <div className="no-data-overlay">No sector breakdown available for the selected operation type</div>
-              )}
             </div>
           </div>
           <div className="card">
@@ -749,58 +816,95 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Health & WASH ── */}
+        {/* ── Health & WASH / Budget Analysis ── */}
         <div className="section-hdr">
-          <span className="section-hdr-title">Health &amp; WASH Budget Analysis</span>
+          <span className="section-hdr-title">
+            {stats.hasSectorData ? 'Health & WASH Budget Analysis' : 'Budget Analysis'}
+          </span>
         </div>
 
         <div className="hw-stats">
-          <div className="hw-stat hw-health">
-            <div className="hw-icon">🏥</div>
-            <div>
-              <div className="hw-stat-lbl">Health Budget</div>
-              <div className="hw-stat-val">{fMoney(stats.healthSum)}</div>
-              <div className="hw-stat-sub">{pct(stats.healthSum)}</div>
-            </div>
-          </div>
-          <div className="hw-stat hw-wash">
-            <div className="hw-icon">💧</div>
-            <div>
-              <div className="hw-stat-lbl">WASH Budget</div>
-              <div className="hw-stat-val">{fMoney(stats.washSum)}</div>
-              <div className="hw-stat-sub">{pct(stats.washSum)}</div>
-            </div>
-          </div>
-          <div className="hw-stat hw-combo">
-            <div className="hw-icon">➕</div>
-            <div>
-              <div className="hw-stat-lbl">Health + WASH Combined</div>
-              <div className="hw-stat-val">{fMoney(stats.healthSum + stats.washSum)}</div>
-              <div className="hw-stat-sub">{pct(stats.healthSum + stats.washSum)}</div>
-            </div>
-          </div>
+          {stats.hasSectorData ? (
+            <>
+              <div className="hw-stat hw-health">
+                <div className="hw-icon">🏥</div>
+                <div>
+                  <div className="hw-stat-lbl">Health Budget</div>
+                  <div className="hw-stat-val">{fMoney(stats.healthSum)}</div>
+                  <div className="hw-stat-sub">{pct(stats.healthSum)}</div>
+                </div>
+              </div>
+              <div className="hw-stat hw-wash">
+                <div className="hw-icon">💧</div>
+                <div>
+                  <div className="hw-stat-lbl">WASH Budget</div>
+                  <div className="hw-stat-val">{fMoney(stats.washSum)}</div>
+                  <div className="hw-stat-sub">{pct(stats.washSum)}</div>
+                </div>
+              </div>
+              <div className="hw-stat hw-combo">
+                <div className="hw-icon">➕</div>
+                <div>
+                  <div className="hw-stat-lbl">Health + WASH Combined</div>
+                  <div className="hw-stat-val">{fMoney(stats.healthSum + stats.washSum)}</div>
+                  <div className="hw-stat-sub">{pct(stats.healthSum + stats.washSum)}</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="hw-stat hw-health">
+                <div className="hw-icon">💰</div>
+                <div>
+                  <div className="hw-stat-lbl">Total Requested</div>
+                  <div className="hw-stat-val">{fMoney(stats.totalBudget)}</div>
+                  <div className="hw-stat-sub">amount requested</div>
+                </div>
+              </div>
+              <div className="hw-stat hw-wash">
+                <div className="hw-icon">✅</div>
+                <div>
+                  <div className="hw-stat-lbl">Total Funded</div>
+                  <div className="hw-stat-val">{fMoney(stats.totalFunded)}</div>
+                  <div className="hw-stat-sub">amount funded</div>
+                </div>
+              </div>
+              <div className="hw-stat hw-combo">
+                <div className="hw-icon">📊</div>
+                <div>
+                  <div className="hw-stat-lbl">Funding Coverage</div>
+                  <div className="hw-stat-val">
+                    {stats.coverage != null ? `${stats.coverage.toFixed(1)}%` : '—'}
+                  </div>
+                  <div className="hw-stat-sub">funded vs requested</div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="charts-top" style={{ marginBottom: '16px' }}>
           <div className="card">
-            <div className="card-title">Health vs WASH Budget by Year</div>
-            <div className="card-sub">Annual CHF allocation for Health and WASH sectors across filtered operations</div>
-            <div className="chart-wrap" style={{ position: 'relative' }}>
-              <canvas ref={hwYearRef} />
-              {!stats.hasSectorData && (
-                <div className="no-data-overlay">No sector breakdown available for the selected operation type</div>
-              )}
+            <div className="card-title">
+              {stats.hasSectorData ? 'Health vs WASH Budget by Year' : 'Budget by Year'}
             </div>
+            <div className="card-sub">
+              {stats.hasSectorData
+                ? 'Annual CHF allocation for Health and WASH sectors across filtered operations'
+                : 'Annual amount requested vs funded across filtered operations (CHF)'}
+            </div>
+            <div className="chart-wrap"><canvas ref={hwYearRef} /></div>
           </div>
           <div className="card">
-            <div className="card-title">Health vs WASH Budget by Region</div>
-            <div className="card-sub">Total CHF allocated to Health and WASH per IFRC region</div>
-            <div className="chart-wrap" style={{ position: 'relative' }}>
-              <canvas ref={hwRegionRef} />
-              {!stats.hasSectorData && (
-                <div className="no-data-overlay">No sector breakdown available for the selected operation type</div>
-              )}
+            <div className="card-title">
+              {stats.hasSectorData ? 'Health vs WASH Budget by Region' : 'Budget by Region'}
             </div>
+            <div className="card-sub">
+              {stats.hasSectorData
+                ? 'Total CHF allocated to Health and WASH per IFRC region'
+                : 'Amount requested vs funded per IFRC region (CHF)'}
+            </div>
+            <div className="chart-wrap"><canvas ref={hwRegionRef} /></div>
           </div>
         </div>
 
