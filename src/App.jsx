@@ -230,7 +230,7 @@ function baseOpts(legend = true) {
   };
 }
 
-function drawCharts(filtered, refs, instances) {
+function drawCharts(filtered, drefFiltered, refs, instances) {
   // Operations by Year
   if (refs.year) {
     const byYear = {};
@@ -272,7 +272,7 @@ function drawCharts(filtered, refs, instances) {
 
   // Budget by Sector
   if (refs.sector) {
-    const drefOnly = filtered.filter(o => o._src === 'dref' && o.sectorBudgets);
+    const drefOnly = drefFiltered.filter(o => o.sectorBudgets);
     const totals = SECTORS.map(s => ({
       label: s.label,
       sum: drefOnly.reduce((acc, op) => acc + (op.sectorBudgets[s.key] || 0), 0),
@@ -332,7 +332,7 @@ function drawCharts(filtered, refs, instances) {
 
   // Health & WASH by Year
   if (refs.hwYear) {
-    const ops = filtered.filter(o => o._src === 'dref' && o.sectorBudgets && o.date);
+    const ops = drefFiltered.filter(o => o.sectorBudgets && o.date);
     const byYear = {};
     ops.forEach(op => {
       const y = new Date(op.date).getFullYear();
@@ -369,7 +369,7 @@ function drawCharts(filtered, refs, instances) {
 
   // Health & WASH by Region
   if (refs.hwRegion) {
-    const ops = filtered.filter(o => o._src === 'dref' && o.sectorBudgets);
+    const ops = drefFiltered.filter(o => o.sectorBudgets);
     const byRegion = {};
     ops.forEach(op => {
       const r = op.region || 'Unknown';
@@ -458,6 +458,28 @@ export default function App() {
     return [...yrs].sort((a, b) => b - a);
   }, [drefOps, eaOps]);
 
+  const drefFiltered = useMemo(() => {
+    return drefOps.filter(op => {
+      if (op.date) {
+        const y = new Date(op.date).getFullYear();
+        if (filterYearFrom != null && y < filterYearFrom) return false;
+        if (filterYearTo   != null && y > filterYearTo)   return false;
+      }
+      if (filterStatus !== 'all') {
+        const isActive = ['active', 'ongoing'].includes((op.status || '').toLowerCase());
+        if (filterStatus === 'active' && !isActive) return false;
+        if (filterStatus === 'closed' &&  isActive) return false;
+      }
+      if (filterRegion !== 'all' && op.region !== filterRegion) return false;
+      if (filterDisaster && !(op.disaster || '').toLowerCase().includes(filterDisaster.toLowerCase())) return false;
+      if (filterName) {
+        const h = `${op.name} ${op.appeal_id} ${op.country}`.toLowerCase();
+        if (!h.includes(filterName.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [drefOps, filterYearFrom, filterYearTo, filterStatus, filterRegion, filterDisaster, filterName]);
+
   const filtered = useMemo(() => {
     let pool = [];
     if (filterType !== 'ea') pool.push(...drefOps);
@@ -494,17 +516,17 @@ export default function App() {
     const eaReq    = eas.reduce((s, o) => s + (o.total_budget || 0), 0);
     const eaFunded = eas.reduce((s, o) => s + (o.amount_funded || 0), 0);
     const coverage = eaReq > 0 ? (eaFunded / eaReq) * 100 : null;
-    const drefOnly = drefs.filter(o => o.sectorBudgets);
+    const drefOnly = drefFiltered.filter(o => o.sectorBudgets);
     const drefTotal  = drefOnly.reduce((s, o) => s + (o.total_budget || 0), 0);
     const healthSum  = drefOnly.reduce((s, o) => s + (o.sectorBudgets.sector_health || 0), 0);
     const washSum    = drefOnly.reduce((s, o) => s + (o.sectorBudgets.sector_water_sanitation_and_hygiene || 0), 0);
     return { total: filtered.length, drefCount: drefs.length, eaCount: eas.length, totalBudget, totalPeople, countries, coverage, drefTotal, healthSum, washSum };
-  }, [filtered]);
+  }, [filtered, drefFiltered]);
 
   useEffect(() => {
     if (loading) return;
     const instances = chartInstances.current;
-    drawCharts(filtered, {
+    drawCharts(filtered, drefFiltered, {
       year: yearRef.current, region: regionRef.current,
       sector: sectorRef.current, dtype: dtypeRef.current,
       hwYear: hwYearRef.current, hwRegion: hwRegionRef.current,
@@ -513,7 +535,7 @@ export default function App() {
       Object.values(instances).forEach(c => c?.destroy());
       chartInstances.current = {};
     };
-  }, [filtered, loading]);
+  }, [filtered, drefFiltered, loading]);
 
   const yearOptions = years.map(y => ({ value: y, label: String(y) }));
   const pageData    = filtered.slice((page - 1) * PG, page * PG);
