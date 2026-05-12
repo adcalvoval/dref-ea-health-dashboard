@@ -448,15 +448,66 @@ function drawPersonnelCharts(erus, refs, instances) {
       options: { ...baseOpts(false), indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, precision: 0 } }, y: plainAxisY } },
     });
   }
-  if (refs.eruCountry) {
+  if (refs.eruTimeline) {
     if (erus.length === 0) return;
-    const counts = {};
-    erus.forEach(e => { const c = e.deployed_to?.name || 'Unknown'; counts[c] = (counts[c] || 0) + 1; });
-    const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    instances.eruCountry = new Chart(refs.eruCountry, {
+    const today = new Date();
+    const withDates = erus.filter(e => e.start_date);
+    if (withDates.length === 0) return;
+
+    // Epoch = start of the earliest deployment month
+    const earliest = new Date(Math.min(...withDates.map(e => new Date(e.start_date))));
+    earliest.setDate(1);
+    const epoch = earliest.getTime();
+    const toDay = d => (d.getTime() - epoch) / 86400000;
+
+    const labels = withDates.map(e => {
+      const ns = e.eru_owner?.society_name || '?';
+      const country = e.deployed_to?.name || '';
+      return country ? `${e.type_display} · ${country} (${ns})` : `${e.type_display} (${ns})`;
+    });
+    const data = withDates.map(e => [
+      toDay(new Date(e.start_date)),
+      toDay(e.end_date ? new Date(e.end_date) : today),
+    ]);
+    const maxDay = Math.max(...data.map(d => d[1])) + 15;
+
+    const fmtDay = v => {
+      const d = new Date(epoch + v * 86400000);
+      return d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+    };
+
+    instances.eruTimeline = new Chart(refs.eruTimeline, {
       type: 'bar',
-      data: { labels: rows.map(r => r[0]), datasets: [{ label: 'Deployed ERUs', data: rows.map(r => r[1]), backgroundColor: '#10B981', borderRadius: 4 }] },
-      options: { ...baseOpts(false), indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#F3F4F6' }, ticks: { font: { size: 11 }, precision: 0 } }, y: plainAxisY } },
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: '#06B6D4',
+          borderRadius: 4,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: ctx => {
+              const [s, e] = ctx.raw;
+              return ` ${fmtDay(s)}  →  ${fmtDay(e)}`;
+            },
+          }},
+        },
+        scales: {
+          x: {
+            min: 0, max: maxDay,
+            grid: { color: '#F3F4F6' },
+            ticks: { font: { size: 10 }, stepSize: 30, callback: v => fmtDay(v) },
+          },
+          y: { ticks: { font: { size: 10 } } },
+        },
+      },
     });
   }
 }
@@ -493,10 +544,10 @@ export default function WashApp() {
   const hwRegionRef = useRef(null);
   const chartInstances = useRef({});
 
-  const eruTypeRef    = useRef(null);
-  const eruEventRef   = useRef(null);
-  const eruCountryRef = useRef(null);
-  const eruInstances  = useRef({});
+  const eruTypeRef     = useRef(null);
+  const eruEventRef    = useRef(null);
+  const eruTimelineRef = useRef(null);
+  const eruInstances   = useRef({});
 
   useEffect(() => {
     Promise.all([
@@ -620,7 +671,7 @@ export default function WashApp() {
     const instances = eruInstances.current;
     drawPersonnelCharts(filteredEru, {
       eruType: eruTypeRef.current, eruEvent: eruEventRef.current,
-      eruCountry: eruCountryRef.current,
+      eruTimeline: eruTimelineRef.current,
     }, instances);
     return () => { Object.values(instances).forEach(c => c?.destroy()); eruInstances.current = {}; };
   }, [filteredEru, loading]);
@@ -786,9 +837,9 @@ export default function WashApp() {
         </div>
         <div style={{ marginBottom: '16px' }}>
           <div className="card">
-            <div className="card-title">Active Deployments by Country</div>
-            <div className="card-sub">Countries currently hosting deployed WASH ERUs</div>
-            <div className="chart-wrap"><canvas ref={eruCountryRef} /></div>
+            <div className="card-title">WASH ERU Deployment Timeline</div>
+            <div className="card-sub">Deployment period for each active WASH ERU (start → end date)</div>
+            <div className="chart-wrap chart-tall"><canvas ref={eruTimelineRef} /></div>
           </div>
         </div>
 
