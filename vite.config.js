@@ -20,7 +20,8 @@ function getToken() {
 const TOKEN = getToken();
 
 function apiFetch(url) {
-  return fetch(url, { headers: { Authorization: `Token ${TOKEN}` } }).then(r => {
+  const headers = TOKEN ? { Authorization: `Token ${TOKEN}` } : {};
+  return fetch(url, { headers }).then(r => {
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     return r.json();
   });
@@ -63,7 +64,49 @@ export default defineConfig({
             .then(all => sendJSON(res, all))
             .catch(err => sendError(res, err));
         });
+
+        server.middlewares.use('/api/dref-appeals', (_req, res) => {
+          const pages = [];
+          function next(url) {
+            if (!url) return Promise.resolve(pages.flat());
+            return apiFetch(url).then(data => {
+              pages.push(data.results ?? []);
+              return next(data.next ?? null);
+            });
+          }
+          next('https://goadmin.ifrc.org/api/v2/appeal/?limit=500&atype=0&start_date__gte=2016-01-01&ordering=start_date')
+            .then(all => sendJSON(res, all))
+            .catch(err => sendError(res, err));
+        });
+
+        server.middlewares.use('/api/eru', (_req, res) => {
+          const pages = [];
+          function next(url) {
+            if (!url) return Promise.resolve(pages.flat());
+            return apiFetch(url).then(data => {
+              pages.push(data.results ?? []);
+              return next(data.next ?? null);
+            });
+          }
+          next('https://goadmin.ifrc.org/api/v2/deployed_eru_by_event/?limit=100')
+            .then(all => sendJSON(res, all))
+            .catch(err => sendError(res, err));
+        });
+
+        server.middlewares.use('/api/personnel', (_req, res) => {
+          apiFetch('https://goadmin.ifrc.org/api/v2/personnel/?limit=500&ordering=-start_date')
+            .then(data => sendJSON(res, data))
+            .catch(err => sendError(res, err));
+        });
       },
     },
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: './index.html',
+        wash: './wash.html',
+      },
+    },
+  },
 });

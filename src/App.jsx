@@ -118,6 +118,27 @@ function processDref(raw) {
   });
 }
 
+function processDrefAppeals(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results ?? []);
+  return list.map(r => ({
+    _src: 'dref',
+    appeal_id: r.code,
+    name: r.name || '—',
+    country: r.country?.name || '—',
+    country_iso3: r.country?.iso3,
+    region: r.region?.region_name || '—',
+    disaster: r.dtype?.name || '—',
+    stage: null,
+    status: r.status === 0 ? 'active' : 'closed',
+    date: (r.start_date || '').substring(0, 10),
+    total_budget: r.amount_requested || 0,
+    amount_funded: r.amount_funded || 0,
+    people_targeted: r.num_beneficiaries || 0,
+    link: null,
+    sectorBudgets: null,
+  }));
+}
+
 function processEA(raw) {
   return raw.map(r => ({
     _src: 'ea',
@@ -304,7 +325,7 @@ function drawCharts(filtered, refs, instances) {
     filtered.forEach(op => {
       if (!op.date) return;
       const y = new Date(op.date).getFullYear();
-      if (y < 2018 || y > 2026) return;
+      if (y < 2016 || y > 2026) return;
       if (!byYear[y]) byYear[y] = { dref: 0, ea: 0 };
       if (op._src === 'dref') byYear[y].dref++; else byYear[y].ea++;
     });
@@ -415,7 +436,7 @@ function drawCharts(filtered, refs, instances) {
       const byYear = {};
       withSectors.filter(o => o.date).forEach(op => {
         const y = new Date(op.date).getFullYear();
-        if (y < 2018 || y > 2026) return;
+        if (y < 2016 || y > 2026) return;
         const yk = String(y);
         if (!byYear[yk]) byYear[yk] = { health: 0, wash: 0 };
         byYear[yk].health += op.sectorBudgets.sector_health || 0;
@@ -442,7 +463,7 @@ function drawCharts(filtered, refs, instances) {
       const byYear = {};
       filtered.filter(o => o.date).forEach(op => {
         const y = new Date(op.date).getFullYear();
-        if (y < 2018 || y > 2026) return;
+        if (y < 2016 || y > 2026) return;
         const yk = String(y);
         if (!byYear[yk]) byYear[yk] = { req: 0, funded: 0 };
         byYear[yk].req    += op.total_budget   || 0;
@@ -561,8 +582,12 @@ export default function App() {
     Promise.all([
       fetch('/api/dref3').then(r => r.json()),
       fetch('/api/appeals').then(r => r.json()),
-    ]).then(([dref3, eas]) => {
-      setDrefOps(processDref(dref3));
+      fetch('/api/dref-appeals').then(r => r.json()).catch(() => []),
+    ]).then(([dref3, eas, drefAppeals]) => {
+      const dref3Ops = processDref(dref3);
+      const dref3Codes = new Set(dref3Ops.map(o => o.appeal_id));
+      const legacyOps = processDrefAppeals(drefAppeals).filter(o => !dref3Codes.has(o.appeal_id));
+      setDrefOps([...legacyOps, ...dref3Ops]);
       setEaOps(processEA(eas));
     }).catch(err => {
       console.error('Failed to load data:', err);
@@ -576,7 +601,7 @@ export default function App() {
     [...drefOps, ...eaOps].forEach(op => {
       if (op.date) {
         const y = new Date(op.date).getFullYear();
-        if (y >= 2018 && y <= 2026) yrs.add(y);
+        if (y >= 2016 && y <= 2026) yrs.add(y);
       }
     });
     return [...yrs].sort((a, b) => b - a);
@@ -590,6 +615,7 @@ export default function App() {
       .filter(op => {
         if (op.date) {
           const y = new Date(op.date).getFullYear();
+          if (y < 2016 || y > 2026) return false;
           if (filterYearFrom != null && y < filterYearFrom) return false;
           if (filterYearTo   != null && y > filterYearTo)   return false;
         }

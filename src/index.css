@@ -303,6 +303,8 @@ body {
 .b-active { background: #D1FAE5; color: #065F46; }
 .b-closed { background: #F3F4F6; color: #6B7280; }
 .b-stage  { background: #EDE9FE; color: #5B21B6; }
+.b-legacy { background: #FEF3C7; color: #92400E; }
+tr.row-legacy td { background: #FFFBEB; }
 .pill {
   display: inline-flex;
   align-items: center;
